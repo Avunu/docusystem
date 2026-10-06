@@ -55,8 +55,8 @@ Steps 1 to 3 are settings, not code. Do them before the release pull request is 
 
    **Route A, alternative:** create a granular access token (read and write, scope `@avunu`, "Bypass 2FA", default 7-day expiry) and store it as the secret `NPM_TOKEN` of the GitHub environment `npm`. Merge the first release pull request. Then attach the trusted publisher, set "Require two-factor authentication and disallow tokens", delete the secret and revoke the token.
 
-3. **GitHub settings** of this repository: see [GitHub settings](#github-settings).
-4. **Merge** the implementation pull requests (gate G1 below), then merge the release pull request `chore: release v0.1.0`. `release.yml` tags `v0.1.0`, creates the GitHub Release and publishes with provenance through OIDC.
+3. **GitHub settings** of this repository: see [GitHub settings](#github-settings). Two of them decide how the first release goes and cost something if left for later: the environment `npm` (create it first; step 6 there) and the merge method (squash only; step 1 there).
+4. **Merge** the implementation pull requests (gate G1 below), then merge the release pull request `chore: release v0.1.0` as described in [Merging the release pull request](#merging-the-release-pull-request): squash, and no edit to its title or description. `release.yml` tags `v0.1.0`, creates the GitHub Release and publishes with provenance through OIDC.
 5. **Verify.**
    - `npm view @avunu/docusystem@0.1.0 _npmUser` shows `GitHub Actions <npm-oidc-no-reply@github.com>` with a `trustedPublisher` entry.
    - In a scratch directory, `npm install @avunu/docusystem@0.1.0 --ignore-scripts` and then `npm audit signatures --include-attestations` reports a verified provenance attestation.
@@ -67,17 +67,25 @@ Requirements npm documents for trusted publishing: npm CLI 11.5.1 or newer and N
 
 ## GitHub settings
 
-State of `Avunu/docusystem` read on 2026-10-06: public; auto-merge off; secret scanning, push protection, Dependabot security updates and private vulnerability reporting disabled; no rulesets and no environments; default workflow permission `read`; "Actions may create and approve pull requests" on (release-please needs it).
+State of `Avunu/docusystem` read on 2026-10-06, after the implementation pull requests were merged: public; auto-merge on; merge commits off, squash merging and rebase merging both on, with the squash message defaults "commit or pull request title" and "commit messages"; head branches deleted on merge; secret scanning, push protection, Dependabot security updates and private vulnerability reporting disabled; no rulesets, no environments and no protection on `main`; default workflow permission `read`; "Actions may create and approve pull requests" on (release-please needs it). None of the numbered settings below is in place yet.
 
-1. **Settings, General, Pull Requests.** Allow squash merging only, with "Pull request title and description" as the default commit message (so that a `BREAKING CHANGE:` note in the body reaches the commit), and delete head branches on merge.
+1. **Settings, General, Pull Requests.** Allow squash merging only (turn rebase merging off; merge commits already are), with "Pull request title and description" as the default commit message (so that a `BREAKING CHANGE:` note in the body reaches the commit), and delete head branches on merge.
 2. **Settings, Code security.** Enable Dependabot alerts and security updates, secret scanning with push protection, and **private vulnerability reporting** ([SECURITY.md](SECURITY.md) points at it).
 3. **Settings, Rules, Rulesets, branch `main`.** Require a pull request, require the status check `ci` and no other, block force pushes and deletion.
 4. **Settings, Rules, Rulesets, tags `v*.*.*`.** Restrict updates and deletions, so that a released tag can never move.
 5. **Settings, General, Releases.** Turn on release immutability.
-6. **Settings, Environments.** Create `npm`, with deployment branches limited to `main`. It holds no secret once the first release is done.
+6. **Settings, Environments.** Create `npm` before the release pull request is merged, with "Deployment branches and tags" set to **Selected branches and tags** and one name pattern, `main`. It holds no secret once the first release is done.
+   - If `npm` does not exist when the first `publish` job runs, GitHub creates it on the spot, with no protection rules and no branch restriction ("Running a workflow that references an environment that does not exist will create an environment with the referenced name"). The release still publishes, because the trusted publisher on npmjs.com matches the environment's name. What is lost is the restriction, so if that happens, open the new environment right after the run and add the rule.
+   - Do not choose **Protected branches only**. GitHub describes it in terms of branch protection rules ("If no branch protection rules are defined for any branch in the repository, then all branches can deploy"), and `main` is protected here by a ruleset (step 3), so what the option would do is not known: it may restrict nothing, or it may reject the `publish` job before its first step. If a run is rejected that way, fix the environment and choose **Re-run failed jobs** on that run, never **Re-run all jobs**, which skips the publish.
 7. **Settings, Actions, General.** Turn on "Require actions to be pinned to a full-length commit SHA" (every `uses:` in this repository already is). Leave the default workflow permission at `read`.
 
 A public repository can call a reusable workflow only from a public repository, and a private repository can call a public one. A caller's organization needs "allow actions and reusable workflows" to include `Avunu/docusystem/*` if it restricts Actions to a list.
+
+### Merging the release pull request
+
+Use **Squash and merge**, and do not edit the title or the description of the pull request before merging it. release-please finds a merged release pull request by its `autorelease: pending` label, its branch name, its title and its body, never by the commit subject (`manifest.js` and `strategies/base.js` of release-please 17.x), so which commit a merge method writes does not matter to it, but an edited title or body does: it logs `Bad pull request title` or `Could not parse pull request body as a release PR`, creates no tag and no GitHub Release, and the `publish` job is skipped. The pull request then stays labelled `autorelease: pending`, and release-please refuses to open another release pull request ("There are untagged, merged release PRs outstanding") until someone fixes the label by hand.
+
+Do not rebase-merge it. Squash is the one method this runbook has checked against that lookup; rebase merging has not been tried, and neither has whether GitHub accepts it for a pull request that carries "Update branch" merge commits.
 
 ## Gates
 
