@@ -25,19 +25,7 @@ import {
 } from "./links.js";
 import { safetyAssertions } from "./safety.js";
 import type { Assertion } from "./types.js";
-
-const pass = (message: string): Assertion => ({ ok: true, message });
-const fail = (message: string): Assertion => ({ ok: false, message });
-const verdict = (ok: boolean, good: string, bad: string): Assertion =>
-  ok ? pass(good) : fail(bad);
-
-/** `a, b, c and 4 more`: a bounded list for a message. */
-function listOf(items: string[], max = 5): string {
-  if (items.length <= max) return items.join(", ");
-  return `${items.slice(0, max).join(", ")} and ${items.length - max} more`;
-}
-
-const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
+import { fail, listOf, pass, plural, verdict } from "./verdict.js";
 
 /** One line as it is printed: `ok   <message>` or `FAIL <message>`. */
 export function formatAssertion(assertion: Assertion): string {

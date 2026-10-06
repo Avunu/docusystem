@@ -15,16 +15,10 @@ import {
   xmlHazards,
 } from "./html-policy.js";
 import type { Assertion } from "./types.js";
+import { fail, listOf, pass } from "./verdict.js";
 
-const pass = (message: string): Assertion => ({ ok: true, message });
-const fail = (message: string): Assertion => ({ ok: false, message });
-
-/** `a, b, c and 4 more`. */
-function listOf(items: string[], max = 4): string {
-  return items.length <= max
-    ? items.join(", ")
-    : `${items.slice(0, max).join(", ")} and ${items.length - max} more`;
-}
+/** How many items of a list a message of this module names. */
+const SHOWN = 4;
 
 /** The folder Jx copies the files that a page links to from the Markdown folder into: `/content/<collection>/...`. */
 const CONTENT_FOLDER = "content/";
@@ -62,7 +56,7 @@ export function safetyAssertions(
     hazardous.length === 0
       ? pass("no page holds a script, an event handler, a javascript: address or an embedded page")
       : fail(
-          `pages hold something that runs code or embeds another page: ${listOf(hazardous)}. It comes from raw HTML, a link, an image or a :directive in the Markdown, which may only use text, table and image elements and http, https, mailto, tel and relative addresses (docusystem lint names the file and line)`,
+          `pages hold something that runs code or embeds another page: ${listOf(hazardous, SHOWN)}. It comes from raw HTML, a link, an image or a :directive in the Markdown, which may only use text, table and image elements and http, https, mailto, tel and relative addresses (docusystem lint names the file and line)`,
         ),
   );
 
@@ -78,7 +72,7 @@ export function safetyAssertions(
           "every file published from the Markdown folder is a picture, a document or data, none runs",
         )
       : fail(
-          `files linked from the Markdown would run on the site's domain when opened: ${listOf(active)}. Link to images, PDFs and archives only; an HTML, script or XML page cannot be published from the documentation`,
+          `files linked from the Markdown would run on the site's domain when opened: ${listOf(active, SHOWN)}. Link to images, PDFs and archives only; an HTML, script or XML page cannot be published from the documentation`,
         ),
   );
 
@@ -94,7 +88,7 @@ export function safetyAssertions(
       ? pass(
           `${pages.length} page${pages.length === 1 ? "" : "s"} carry a Content-Security-Policy that blocks inline handlers, javascript: addresses and scripts the build did not write`,
         )
-      : fail(`pages without a sound Content-Security-Policy: ${listOf(unguarded)}`),
+      : fail(`pages without a sound Content-Security-Policy: ${listOf(unguarded, SHOWN)}`),
   );
   return out;
 }
