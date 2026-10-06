@@ -40,6 +40,9 @@ import { destinations, lines, type Destination } from "./markdown.js";
 import { githubUrl } from "./repo-links.js";
 import type { DocsConfig, Paths, StagedLink, StageResult } from "./types.js";
 
+// Staging is where the leading comment is moved, so it stays reachable from here too.
+export { moveLeadingComment };
+
 export interface StageOptions {
   /** The repository's docs/ folder. */
   source: string;

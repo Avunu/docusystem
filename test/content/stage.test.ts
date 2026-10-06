@@ -14,6 +14,7 @@ import {
 import { join } from "node:path";
 import { listTree, readTree, tempDir, writeTree } from "../support/index.js";
 import { moveLeadingComment } from "../../src/lib/frontmatter.js";
+import * as stage from "../../src/lib/stage.js";
 import {
   resolveLink,
   stageDocs,
@@ -188,6 +189,10 @@ test("stageMarkdown rewrites links and images outside code, and reports each one
   expect(stageMarkdown("no links here\r\nsecond\r\n", "README.md", options).text).toBe(
     "no links here\r\nsecond\r\n",
   );
+});
+
+test("moveLeadingComment is reachable from the staging module", () => {
+  expect(stage.moveLeadingComment).toBe(moveLeadingComment);
 });
 
 test("a comment above the frontmatter is moved below it, and nothing else is touched", () => {
