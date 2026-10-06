@@ -1,0 +1,63 @@
+{
+  "$schema": "./project.schema.json",
+  "$comment": "Test fixture: the shape of the package's site/project.base.json (tokens, head, content types, search, build, extensions), none of its design.",
+  "name": "Project Name",
+  "url": "https://project-name.avunu.net",
+  "defaults": { "layout": "./layouts/base.json", "lang": "en" },
+  "$head": [
+    { "tagName": "meta", "attributes": { "name": "generator", "content": "Jx" } },
+    { "tagName": "link", "attributes": { "rel": "icon", "href": "/favicon.svg", "type": "image/svg+xml" } }
+  ],
+  "$media": { "--dark": "(prefers-color-scheme: dark)" },
+  "style": {
+    "$description": "Fixture tokens.",
+    "--color-bg": "#FBF8F3",
+    "--color-text": "#181D17",
+    "--color-action": "#6237BF",
+    "--color-on-action": "#FFFFFF",
+    "@--dark": {
+      "--color-bg": "#120F19",
+      "--color-text": "#EEEBF4",
+      "--color-action": "#CBB8FF"
+    }
+  },
+  "content": {
+    "docs": {
+      "source": "./.generated/docs",
+      "format": "Markdown",
+      "exclude": ["**/node_modules/**", "**/.*", "**/.*/**", "**/_*", "**/_*/**"],
+      "where": { "draft": { "$ne": true }, "publish": { "$ne": false } },
+      "route": "/docs/{id:slug}/",
+      "indexRoute": "/docs/{dir:slug}/",
+      "links": "warn",
+      "alerts": {
+        "NOTE": "docs-callout",
+        "TIP": "docs-callout",
+        "IMPORTANT": "docs-callout",
+        "WARNING": "docs-callout",
+        "CAUTION": "docs-callout"
+      },
+      "$elements": [{ "$ref": "./components/docs-callout.json" }],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "order": { "type": "number" },
+          "draft": { "type": "boolean" },
+          "publish": { "type": "boolean" }
+        },
+        "required": []
+      }
+    },
+    "nav": { "source": "./.generated/nav.json", "format": "json" },
+    "config": { "source": "./docusystem.config.json", "format": "json" },
+    "projects": { "source": "./data/projects.snapshot.json", "format": "json" }
+  },
+  "search": {
+    "output": "/search-index.json",
+    "collections": { "docs": { "basePath": "/docs/", "boost": { "title": 4, "heading": 2 } } }
+  },
+  "build": { "outDir": "./dist", "trailingSlash": "always", "headers": { "enabled": false } },
+  "extensions": ["@jxsuite/parser", "@jxsuite/search"]
+}

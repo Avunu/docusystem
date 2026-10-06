@@ -1,0 +1,14 @@
+{
+  "$layout": "./layouts/docs.json",
+  "$paths": { "contentType": "docs" },
+  "title": "${state.page.data.title}",
+  "state": {
+    "page": { "$prototype": "ContentEntry", "contentType": "docs", "timing": "compiler" }
+  },
+  "children": [
+    { "tagName": "main", "attributes": { "id": "main" }, "children": [
+      { "tagName": "h1", "textContent": "${state.page.data.title}" },
+      { "tagName": "article", "children": "${state.page.$children}" }
+    ] }
+  ]
+}

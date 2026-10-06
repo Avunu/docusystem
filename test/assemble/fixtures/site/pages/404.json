@@ -1,0 +1,7 @@
+{
+  "$layout": "./layouts/base.json",
+  "title": "Page not found",
+  "children": [
+    { "tagName": "main", "attributes": { "id": "main" }, "children": [{ "tagName": "h1", "textContent": "Page not found" }] }
+  ]
+}

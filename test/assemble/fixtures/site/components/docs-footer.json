@@ -1,0 +1,6 @@
+{
+  "$id": "DocsFooter",
+  "tagName": "docs-footer",
+  "style": { "display": "block", "padding": "12px", "color": "var(--color-text)" },
+  "children": [{ "tagName": "p", "textContent": "Package footer" }]
+}
