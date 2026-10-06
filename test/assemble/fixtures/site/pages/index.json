@@ -1,0 +1,13 @@
+{
+  "$layout": "./layouts/base.json",
+  "title": "${state.config.data.name}: documentation",
+  "state": {
+    "config": { "$prototype": "ContentEntry", "contentType": "config", "id": "docusystem.config", "timing": "compiler" }
+  },
+  "children": [
+    { "tagName": "main", "attributes": { "id": "main" }, "children": [
+      { "tagName": "h1", "textContent": "${state.config.data.name}" },
+      { "tagName": "p", "textContent": "${state.config.data.tagline}" }
+    ] }
+  ]
+}
