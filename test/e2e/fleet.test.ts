@@ -31,7 +31,7 @@ interface Fleet {
     expected: Record<string, string>,
   ): Array<{ repo: string; ok: boolean; outcome: string }>;
   renderSummary(rows: unknown[], o?: { enforce?: boolean }): string;
-  parseOptions(argv: string[]): Record<string, any>;
+  parseOptions(argv: string[], env?: Record<string, string>): Record<string, any>;
   removeStarter(dir: string): string[];
 }
 
@@ -271,6 +271,28 @@ describe("the command line", () => {
     expect(o.tarball).toBe(join(process.cwd(), "x.tgz"));
     expect(o.cloneBase).toBe("file:///r");
     expect(o.enforce).toBe(true);
+  });
+
+  it("enforces by itself on a release pull request, and only there, unless told otherwise", () => {
+    expect(
+      fleet.parseOptions([], { GITHUB_HEAD_REF: "release-please--branches--main" }).enforce,
+    ).toBe(true);
+    expect(
+      fleet.parseOptions([], { GITHUB_REF_NAME: "release-please--branches--main" }).enforce,
+    ).toBe(true);
+    expect(fleet.parseOptions([], { GITHUB_REF_NAME: "main" }).enforce).toBe(false);
+    expect(
+      fleet.parseOptions([], { GITHUB_HEAD_REF: "feat/x", GITHUB_REF_NAME: "123/merge" }).enforce,
+    ).toBe(false);
+    expect(fleet.parseOptions([], {}).enforce).toBe(false);
+    expect(
+      fleet.parseOptions(["--informational"], { GITHUB_REF_NAME: "release-please--branches--main" })
+        .enforce,
+    ).toBe(false);
+    expect(fleet.parseOptions(["--enforce"], {}).enforce).toBe(true);
+    expect(fleet.parseOptions(["--enforce", "--informational"]).error).toMatch(
+      /exclude each other/,
+    );
   });
 
   it.each([["0"], ["33"], ["1.5"], ["x"]])("refuses --concurrency %s", (value) => {

@@ -10,10 +10,11 @@
 //
 // The result is a Markdown table with one row per repository (the result and the first ten problem
 // lines), printed, appended to $GITHUB_STEP_SUMMARY when that is set, and optionally written as JSON.
-// A run is informational: it exits 0 whatever the repositories do. With --enforce (the fleet job on a
-// release pull request) every repository must pass or be named in fleet.expected-failures.json with a
-// reason, and the exit code is 1 when one that is not named fails. An expected failure that now passes
-// is reported, because the entry should go; it never fails the run.
+// A run is informational: it exits 0 whatever the repositories do. With --enforce every repository must
+// pass or be named in fleet.expected-failures.json with a reason, and the exit code is 1 when one that is
+// not named fails. Enforcement is on by itself on a release pull request (a branch named release-please--*,
+// where the fleet job of ci.yml runs), so that the workflow needs no flag; --informational turns it off.
+// An expected failure that now passes is reported, because the entry should go; it never fails the run.
 //
 //   node scripts/fleet.mjs [options]
 //
@@ -21,7 +22,9 @@
 //   --tarball <file>      The packed package to adopt with. Default: `npm pack` of this working tree.
 //   --fleet <file>        The list of repositories. Default: fleet.json
 //   --expected <file>     The reviewed exceptions. Default: fleet.expected-failures.json
-//   --enforce             Exit 1 when a repository fails that is not an expected failure.
+//   --enforce             Exit 1 when a repository fails that is not an expected failure. Implied on a
+//                         release-please--* branch (GITHUB_HEAD_REF or GITHUB_REF_NAME).
+//   --informational       Never exit 1 for a repository, whatever the branch.
 //   --concurrency <n>     Repositories adopted at once. Default: 4
 //   --clone-base <url>    Where `<owner>/<name>.git` is cloned from. Default: https://github.com
 //   --work <dir>          Work in this folder (created if needed). Default: a temporary folder.
@@ -397,11 +400,11 @@ export function renderSummary(rows, { enforce = false } = {}) {
 
 const USAGE =
   "usage: node scripts/fleet.mjs [--repo Avunu/<name>]... [--tarball <file>] [--fleet <file>] [--expected <file>]\n" +
-  "         [--enforce] [--concurrency <n>] [--clone-base <url>] [--work <dir>] [--keep] [--summary <file>]\n" +
+  "         [--enforce | --informational] [--concurrency <n>] [--clone-base <url>] [--work <dir>] [--keep] [--summary <file>]\n" +
   "         [--json <file>] [--list]";
 
 /** Parses the command line; returns `{ error }` for a usage error. */
-export function parseOptions(argv) {
+export function parseOptions(argv, env = process.env) {
   let parsed;
   try {
     parsed = parseArgs({
@@ -413,6 +416,7 @@ export function parseOptions(argv) {
         fleet: { type: "string" },
         expected: { type: "string" },
         enforce: { type: "boolean" },
+        informational: { type: "boolean" },
         concurrency: { type: "string" },
         "clone-base": { type: "string" },
         work: { type: "string" },
@@ -428,6 +432,11 @@ export function parseOptions(argv) {
   }
   const v = parsed.values;
   if (v.help) return { help: true };
+  if (v.enforce && v.informational)
+    return { error: "--enforce and --informational exclude each other" };
+  const onReleaseBranch = /^release-please--/.test(
+    env.GITHUB_HEAD_REF || env.GITHUB_REF_NAME || "",
+  );
   const concurrency = v.concurrency === undefined ? 4 : Number(v.concurrency);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) {
     return { error: "--concurrency must be a whole number from 1 to 32" };
@@ -437,7 +446,7 @@ export function parseOptions(argv) {
     tarball: v.tarball === undefined ? undefined : resolve(v.tarball),
     fleet: resolve(v.fleet ?? join(ROOT, "fleet.json")),
     expected: resolve(v.expected ?? join(ROOT, "fleet.expected-failures.json")),
-    enforce: v.enforce === true,
+    enforce: v.enforce === true || (onReleaseBranch && v.informational !== true),
     concurrency,
     cloneBase: (v["clone-base"] ?? "https://github.com").replace(/\/+$/, ""),
     work: v.work === undefined ? undefined : resolve(v.work),
