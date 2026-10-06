@@ -321,6 +321,48 @@ describe("maintainerSteps", () => {
     expect(text).toContain("docs: https://frappe-nix.avunu.net in the entry for frappe-nix");
   });
 
+  test("the domain is verified for the organization before the custom domain and the DNS record", () => {
+    const steps = maintainerSteps({
+      domain: "frappe-nix.avunu.net",
+      slug: "frappe-nix",
+      repo: "https://github.com/Avunu/frappe-nix",
+    });
+    const verify = steps.findIndex((step) => step.startsWith("Verify avunu.net once"));
+    expect(verify).toBeGreaterThan(-1);
+    expect(steps[verify]).toContain("for the Avunu GitHub organization");
+    expect(steps[verify]).toContain("TXT record _github-pages-challenge-Avunu.avunu.net");
+    expect(steps[verify]).toContain("another GitHub account can claim frappe-nix.avunu.net");
+    expect(verify).toBeLessThan(steps.findIndex((step) => step.startsWith("Custom domain:")));
+    expect(verify).toBeLessThan(steps.findIndex((step) => step.startsWith("DNS:")));
+  });
+
+  test("the organization is the owner of the repository, or a placeholder when it is unknown", () => {
+    const named = maintainerSteps({
+      domain: "x.avunu.net",
+      slug: "x",
+      repo: "https://github.com/Another-Org/x",
+    }).join("\n");
+    expect(named).toContain("_github-pages-challenge-Another-Org.avunu.net");
+    const unknown = maintainerSteps({ domain: "x.avunu.net", slug: "x" }).join("\n");
+    expect(unknown).toContain("_github-pages-challenge-<ORG>.avunu.net");
+  });
+
+  test("GitHub protects immediate subdomains only: other names are verified themselves", () => {
+    const nested = maintainerSteps({ domain: "a.b.avunu.net", slug: "x" }).join("\n");
+    expect(nested).toContain("Verify a.b.avunu.net once");
+    expect(nested).toContain("_github-pages-challenge-<ORG>.a.b.avunu.net");
+    const outside = maintainerSteps({ domain: "docs.example.org", slug: "x" }).join("\n");
+    expect(outside).toContain("Verify docs.example.org once");
+  });
+
+  test("the last step removes the record when the site is retired", () => {
+    const steps = maintainerSteps({ domain: "frappe-nix.avunu.net", slug: "frappe-nix" });
+    const last = steps.at(-1) ?? "";
+    expect(last).toContain("when the site is retired or its domain changes");
+    expect(last).toContain("delete the CNAME of the old domain (now: frappe-nix)");
+    expect(last).toContain("no record is left pointing at avunu.github.io");
+  });
+
   test("a domain outside avunu.net is its own record, and a configured branch is named", () => {
     const text = maintainerSteps({ domain: "docs.example.org", slug: "x", branch: "develop" }).join(
       "\n",

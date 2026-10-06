@@ -11,6 +11,7 @@ For the people who release and look after this package. Everything here is eithe
 | The dogfood site (`docs-site/` and its two caller workflows), after 0.1.0 is on npm                                                                                                        | The GitHub settings of this repository ([GitHub settings](#github-settings))                                                                                             |
 |                                                                                                                                                                                            | Merging every pull request, including the release pull request                                                                                                           |
 |                                                                                                                                                                                            | Per adopting repository: the Pages source, custom domain, DNS `CNAME`, the variable `DOCS_SITE_ENABLED`, branch protection and the `docs:` line in the avunu.net catalog |
+|                                                                                                                                                                                            | Once for the organization: verify `avunu.net` for GitHub Pages ([Domains](#domains-of-the-documentation-sites))                                                          |
 |                                                                                                                                                                                            | The [open decisions](#open-decisions)                                                                                                                                    |
 
 ## How a release happens
@@ -106,6 +107,31 @@ Use **Squash and merge**, and do not edit the title or the description of the pu
 
 Do not rebase-merge it. Squash is the one method this runbook has checked against that lookup; rebase merging has not been tried, and neither has whether GitHub accepts it for a pull request that carries "Update branch" merge commits.
 
+## Domains of the documentation sites
+
+Each adopting repository serves its site from `<label>.avunu.net`, with a `CNAME <label> -> avunu.github.io` in the `avunu.net` zone. Two things about those records are the maintainers' to keep safe, and neither can be a pull request.
+
+### Verify avunu.net for the organization
+
+A `CNAME` to `avunu.github.io` says nothing about who may serve the name. If a repository's Pages site is unpublished, renamed, archived or deleted while its record remains, any other GitHub account can add `<label>.avunu.net` as the custom domain of its own Pages site and serve content on a subdomain of `avunu.net`. Verifying the domain for the organization closes that: GitHub then lets only repositories of that organization use the domain and its immediate subdomains. It is a security control, not only a convenience, and it is in force whether or not decision 8 below is ever taken.
+
+1. In the organization's settings (Settings, Code, planning, and automation, Pages), choose **Add a domain** and enter `avunu.net`. Only an organization owner can.
+2. GitHub shows a TXT record. Create it in the `avunu.net` zone with the name `_github-pages-challenge-Avunu` (so `_github-pages-challenge-Avunu.avunu.net`) and the value GitHub gives. Wait for it to resolve, then choose **Verify**.
+3. Do this once, before the first adopting repository gets its DNS record (the proof pilot of gate G4). It is checked in the organization's Pages settings, which list verified domains; no repository needs to repeat it.
+
+The verification covers `avunu.net` and its immediate subdomains. A site on a deeper name such as `a.b.avunu.net` is not covered: verify that name itself too, or avoid it. `docusystem init` and `docusystem doctor` print the step with the project's values.
+
+### Retire a site in this order
+
+The record is what keeps the name pointing at GitHub, so it goes first. [Publishing](docs/guide/publishing.md#when-a-site-is-retired) is the same runbook for the people who own the repository.
+
+1. Delete the `CNAME <label> -> avunu.github.io` record from the zone, or in the same change as the next steps.
+2. Remove the custom domain in the repository's Pages settings (or unpublish Pages) and delete the `DOCS_SITE_ENABLED` variable.
+3. Remove the `docs:` line from the project's avunu.net catalog entry.
+4. Only then rename, archive or delete the repository. A rename changes the hyphenated domain that `init` derives: the old name is retired, the new one is a new site with its own record.
+
+Sweep now and then: list the records of the zone that point at `avunu.github.io` and compare them with the repositories that have Pages enabled; a record without a repository is dangling and gets deleted.
+
 ## Gates
 
 The order matters, because a thin shell needs a published package, a release tag and a lockfile that records the registry's integrity hash.
@@ -113,7 +139,7 @@ The order matters, because a thin shell needs a published package, a release tag
 | Gate | Condition                                                                                                                                  | Who                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
 | G1   | The implementation pull requests are merged to `main` and `ci` is green on `main`                                                          | A maintainer merges                          |
-| G2   | The npm organization, placeholder, trusted publisher and GitHub settings above are in place                                                | A maintainer                                 |
+| G2   | The npm organization, placeholder, trusted publisher, GitHub settings and the `avunu.net` domain verification above are in place           | A maintainer                                 |
 | G3   | The release pull request is merged, the tag `v0.1.0` exists and `@avunu/docusystem@0.1.0` is on npm with a verified provenance attestation | A maintainer merges; `release.yml` publishes |
 | G4   | The proof pilot passes the GitHub checks in [Verified on GitHub](#verified-on-github)                                                      | An agent runs it, a maintainer merges        |
 | G5   | The other pilots migrate, then the rest of the fleet, then the dogfood site                                                                | Agents; a maintainer merges                  |
@@ -170,7 +196,7 @@ Each has a default in force, so that nothing is blocked.
 | 5   | Image optimization default                                                                                                                                         | `images: "optimize"`, with `images: "off"` documented and a hint printed on failure                                  |                            |
 | 6   | Catalog freshness                                                                                                                                                  | Bundled, refreshed weekly as a patch release                                                                         |                            |
 | 7   | A required docs check: drop the path filter of `docs.yml` so that the check always reports, then require it and drop the auto-merge exclusion                      | Keep the exclusion through the pilots, revisit after G5                                                              |                            |
-| 8   | Organization-level domain verification of `avunu.net` plus one wildcard `*.avunu.net` `CNAME` to `avunu.github.io`, which would remove the per-repository DNS step | The per-repository flow, which works without it                                                                      |                            |
+| 8   | One wildcard `*.avunu.net` `CNAME` to `avunu.github.io`, which would remove the per-repository DNS step. Only with the domain verification above, never without it | The per-repository flow, which works without it; the verification is done regardless                                 |                            |
 | 9   | The 1.0.0 criteria above                                                                                                                                           | As listed                                                                                                            |                            |
 | 10  | The domain of this package's own documentation                                                                                                                     | `docusystem.avunu.net` (DNS and Pages enablement are a maintainer's)                                                 | The dogfood site           |
 | 11  | Whether to file the [Jx upstream asks](docs/maintainers/upstream-asks.md)                                                                                          | Undecided                                                                                                            |                            |

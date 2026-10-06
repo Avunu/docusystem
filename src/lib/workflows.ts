@@ -374,23 +374,36 @@ export function inspectCaller(text: string): CallerInfo {
 /**
  * The settings that live in GitHub, DNS and avunu.net (section 2.5): no pull request can make them,
  * so `init` and `doctor` print them with the values of this repository.
+ *
+ * The domain verification comes before the DNS record on purpose: a record that points at
+ * `avunu.github.io` while no GitHub organization has verified the domain lets any other account
+ * claim the name once this repository stops serving it (the subdomain takeover that
+ * MAINTAINING.md describes). The last step is about the end of the site's life for the same reason.
  */
 export function maintainerSteps(config: {
   domain: string;
   slug: string;
+  repo?: string | undefined;
   branch?: string | undefined;
 }): string[] {
   const suffix = ".avunu.net";
   const label = config.domain.endsWith(suffix)
     ? config.domain.slice(0, -suffix.length)
     : config.domain;
+  // GitHub protects the verified domain and its immediate subdomains only, so a nested name needs
+  // its own verification.
+  const verified =
+    config.domain.endsWith(suffix) && !label.includes(".") ? suffix.slice(1) : config.domain;
+  const owner = /^https:\/\/github\.com\/([^/]+)\//.exec(config.repo ?? "")?.[1] ?? "<ORG>";
   return [
     "GitHub Pages: Settings > Pages > Source: GitHub Actions",
+    `Verify ${verified} once for the ${owner} GitHub organization, before the custom domain and the DNS record (organization Settings > Pages > Add a domain; TXT record _github-pages-challenge-${owner}.${verified}). Without it, another GitHub account can claim ${config.domain} if this site is unpublished while its DNS record remains`,
     `Custom domain: ${config.domain} (Settings > Pages); turn on "Enforce HTTPS" once the certificate exists`,
     `DNS: CNAME ${label} -> avunu.github.io (DNS only until the certificate exists)`,
     "Repository variable: DOCS_SITE_ENABLED = true (Settings > Secrets and variables > Actions > Variables); until then the workflows build and check the site but do not publish it",
     `Branch protection on ${config.branch ?? "the default branch"}: every push to it publishes the site`,
     `avunu.net catalog: docs: https://${config.domain} in the entry for ${config.slug}`,
     "In the repository: link the documentation from the README, and exclude docs/ from formatters and hooks that rewrite Markdown (for example a copyright stamp above the front matter)",
+    `Later, when the site is retired or its domain changes (Pages unpublished, repository deleted, archived or renamed): delete the CNAME of the old domain (now: ${label}) and its docs: line in the catalog in the same change, so that no record is left pointing at avunu.github.io`,
   ];
 }

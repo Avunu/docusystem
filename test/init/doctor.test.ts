@@ -846,6 +846,8 @@ describe("the command", () => {
     expect(out).toContain("A maintainer still has to (none of it can be checked from a clone):");
     expect(out).toContain("Custom domain: frappe-nix.avunu.net");
     expect(out).toContain("DOCS_SITE_ENABLED = true");
+    expect(out).toContain("Verify avunu.net once for the Avunu GitHub organization");
+    expect(out).toContain("when the site is retired or its domain changes");
   });
 
   test("warnings do not fail it; errors do", async () => {

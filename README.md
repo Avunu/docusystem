@@ -61,13 +61,14 @@ If the repository has a `dependabot-auto-merge.yml`, `init` patches one line of 
 None of this can be done from a pull request. `init` and `docusystem doctor` print it with the project's values filled in.
 
 1. GitHub Pages source: GitHub Actions.
-2. The custom domain (the repository name with hyphens, then `.avunu.net`), and Enforce HTTPS once the certificate exists.
-3. DNS: `CNAME <label> -> avunu.github.io`, DNS only until the certificate exists.
-4. The repository variable `DOCS_SITE_ENABLED` set to `true`. Until then the publish workflow only builds and checks.
-5. Branch protection on the default branch, because every push to it publishes.
-6. `docs: https://<domain>` in the project's avunu.net catalog entry.
+2. The domain `avunu.net` verified for the GitHub organization (once, not per repository), before any DNS record: otherwise another account can claim the subdomain if the site is ever unpublished while its record remains.
+3. The custom domain (the repository name with hyphens, then `.avunu.net`), and Enforce HTTPS once the certificate exists.
+4. DNS: `CNAME <label> -> avunu.github.io`, DNS only until the certificate exists.
+5. The repository variable `DOCS_SITE_ENABLED` set to `true`. Until then the publish workflow only builds and checks.
+6. Branch protection on the default branch, because every push to it publishes.
+7. `docs: https://<domain>` in the project's avunu.net catalog entry.
 
-See [Publishing](docs/guide/publishing.md).
+When a site is retired, its `CNAME` goes first. See [Publishing](docs/guide/publishing.md).
 
 ## Configuration
 
