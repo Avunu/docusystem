@@ -8,6 +8,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "
 import { join, relative, resolve, sep } from "node:path";
 import { isInside } from "../lib/fsutil.js";
 import {
+  cooldownAdvice,
   DependabotShapeError,
   dependabotFile,
   ensureDependabotEntries,
@@ -695,6 +696,12 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
         changes.push(
           planChange(path, before, next.text, next.changes.join("; ") || "the entries are there"),
         );
+        for (const advice of cooldownAdvice(next.text, {
+          site: siteRel,
+          actions: options.noWorkflow !== true,
+        })) {
+          byHand.push(`${path}: ${advice}`);
+        }
       } catch (error) {
         if (!(error instanceof DependabotShapeError)) throw error;
         byHand.push(

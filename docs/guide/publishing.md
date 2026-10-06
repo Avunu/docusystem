@@ -124,7 +124,10 @@ updates:
       prefix: chore
 ```
 
-A new release of the package arrives as one grouped npm pull request, and a new commit pin as one `github-actions` pull request. The cooldown delays updates of third-party packages; `@avunu/docusystem` and `Avunu/docusystem` are excluded from it so that their releases arrive at once. If an existing `github-actions` entry has a cooldown that does not exclude `Avunu/docusystem`, `docusystem doctor` warns.
+A new release of the package arrives as one grouped npm pull request, and a new commit pin as one `github-actions` pull request. The cooldown delays updates of third-party packages; `@avunu/docusystem` and `Avunu/docusystem` are excluded from it so that their releases arrive at once. That holds for the entries `init` writes. For the entries a repository had already, `init` does this:
+
+- An existing `bun` entry for the site folder (the first sites to adopt the system had one) is converted to `npm` in place, because the lockfile is `package-lock.json`. If it has a cooldown, `init` adds `@avunu/docusystem` to its `cooldown.exclude`, and it changes "Bun" to "npm" in the comment blocks about the site folder. A cooldown it cannot extend in place (a flow mapping, `exclude: [...]`) is left as it is and reported.
+- An existing `npm` entry for the site folder, and an existing `github-actions` entry, are never edited. If their cooldown does not exclude `@avunu/docusystem` or `Avunu/docusystem`, a release would wait out the cooldown (seven days in the examples) before Dependabot proposes it. `init` and `upgrade` print the lines to add under "Not done, for you to do by hand", and `docusystem doctor` warns for both entries.
 
 Both pull requests run `docs.yml` and upload the built site as a review artifact. **A person merges them**, because a merge to the default branch publishes the site. For that reason `init` patches an existing `dependabot-auto-merge.yml` to leave the site's pull requests out:
 
@@ -135,7 +138,7 @@ Both pull requests run `docs.yml` and upload the built site as a review artifact
     if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}
 ```
 
-The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one; any other shape is left alone, printed with the line to add. `doctor` reports an auto-merge workflow that lacks the exclusion.
+The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one, and the comment that gave the starter's reason (a workflow gated by a repository variable) now says that the Docs check is path-filtered and cannot be a required check; any other shape is left alone, printed with the line to add. `doctor` reports an auto-merge workflow that lacks the exclusion.
 
 > [!NOTE]
 > The `docs.yml` path filter means its check is not reported on pull requests that touch no docs path, so it cannot be a required status check as it stands. Whether to make it always report, so that the exclusion can go, is an open decision of the maintainers; see [MAINTAINING.md](../../MAINTAINING.md).

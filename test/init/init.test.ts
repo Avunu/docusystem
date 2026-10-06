@@ -858,6 +858,43 @@ describe("init: Dependabot and the auto-merge workflow", () => {
     expect((await init(root, {}, { deps: NEVER })).out).toContain("nothing to do");
   });
 
+  test("a cooldown that holds the package or the shared workflows back is reported, not edited", async () => {
+    const original = [
+      "version: 2",
+      "updates:",
+      "  - package-ecosystem: npm",
+      "    directory: /docs-site",
+      "    cooldown:",
+      "      default-days: 7",
+      "  - package-ecosystem: github-actions",
+      "    directory: /",
+      "    cooldown:",
+      "      default-days: 7",
+      "",
+    ].join("\n");
+    const root = makeRepo({ files: { ".github/dependabot.yml": original } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    expect(readIn(root, ".github/dependabot.yml")).toBe(original);
+    expect(out).toContain("Not done, for you to do by hand:");
+    expect(out).toContain(
+      '.github/dependabot.yml: the npm entry for /docs-site has a cooldown that does not exclude "@avunu/docusystem", so a release of the package would wait for it; add this under its cooldown:\n    exclude:\n      - "@avunu/docusystem"',
+    );
+    expect(out).toContain(
+      ".github/dependabot.yml: the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
+    );
+    // the same advice stays on a second run, because nothing was done about it
+    expect((await init(root, {}, { deps: NEVER })).out).toContain("cooldown that does not exclude");
+  });
+
+  test("without the workflows there is nothing to say about the github-actions entry", async () => {
+    const original =
+      "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    cooldown:\n      default-days: 7\n";
+    const root = makeRepo({ files: { ".github/dependabot.yml": original } });
+    const { out } = await init(root, { noWorkflow: true });
+    expect(out).not.toContain("cooldown");
+  });
+
   test("--no-dependabot", async () => {
     const root = makeRepo();
     await init(root, { noDependabot: true });
@@ -908,7 +945,7 @@ jobs:
 });
 
 describe.each(PILOTS)("init in a copy of %s's .github", (pilot) => {
-  test("converts the bun entry and exclusion by one line each, and refuses the starter's workflow until --force", async () => {
+  test("converts the bun entry and exclusion, keeps the package out of the cooldown, and refuses the starter's workflow until --force", async () => {
     const root = makeRepo({
       origin: `https://github.com/Avunu/${pilot}.git`,
       files: { ".github/workflows/docs.yml": readFixture("starter-docs.yml") },
@@ -927,15 +964,30 @@ describe.each(PILOTS)("init in a copy of %s's .github", (pilot) => {
       return after.split("\n").flatMap((line, i) => (line === b[i] ? [] : [[b[i] ?? "", line]]));
     };
     const changedDependabot = readIn(root, ".github/dependabot.yml") ?? "";
-    expect(changedDependabot.split("\n")).toHaveLength(dependabot.split("\n").length);
-    expect(diff(dependabot, changedDependabot)).toEqual([
-      ["  - package-ecosystem: bun", "  - package-ecosystem: npm"],
-    ]);
+    // the entry's ecosystem line, its comment if that named Bun, and two new lines in its cooldown
+    expect(changedDependabot.split("\n")).toHaveLength(dependabot.split("\n").length + 2);
+    expect(changedDependabot).toContain(
+      '    cooldown:\n      default-days: 7\n      exclude:\n        - "@avunu/docusystem"\n',
+    );
+    expect(changedDependabot).not.toMatch(/\bBun\b/);
+    expect(changedDependabot).not.toContain("package-ecosystem: bun");
+    expect(diff(dependabot, changedDependabot)[0]?.[0] ?? "").toMatch(
+      /^ {2}#|^ {2}- package-ecosystem: bun$/,
+    );
     const changedMerge = readIn(root, ".github/workflows/dependabot-auto-merge.yml") ?? "";
-    expect(diff(merge, changedMerge)).toHaveLength(1);
+    expect(diff(merge, changedMerge)).toHaveLength(2);
     expect(changedMerge).toContain("dependabot/npm_and_yarn/docs-site");
     expect(changedMerge).not.toContain("dependabot/bun/");
+    expect(changedMerge).not.toContain("gated by a repository variable");
     expect(out).toContain("converted the bun entry for /docs-site to npm");
+    expect(out).toContain("excluded @avunu/docusystem from the cooldown of the npm entry");
+    // what init cannot do for the person it says: erpnext_taskview's github-actions entry has a cooldown
+    expect(
+      out.includes(
+        "the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
+      ),
+    ).toBe(pilot === "erpnext_taskview");
+    expect(out).not.toContain('does not exclude "@avunu/docusystem"');
   });
 });
 

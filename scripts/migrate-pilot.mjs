@@ -30,8 +30,10 @@
 //   2. turns docs.config.json into docusystem.config.json (same values, `$schema` added).
 //   3. writes package.json (one dependency, three scripts), .gitignore and the two caller workflows,
 //      replacing the starter's workflow, pinned to --workflow-sha.
-//   4. converts the Bun entry of .github/dependabot.yml to npm, in place.
-//   5. in dependabot-auto-merge.yml, turns `dependabot/bun/<site>` into `dependabot/npm_and_yarn/<site>`.
+//   4. converts the Bun entry of .github/dependabot.yml to npm, in place; if it has a cooldown the package is
+//      added to its `exclude`, and the comments about the site that name Bun say npm.
+//   5. in dependabot-auto-merge.yml, turns `dependabot/bun/<site>` into `dependabot/npm_and_yarn/<site>`,
+//      and corrects the comment that gives the starter's reason (a workflow gated by a repository variable).
 //   6. LISTS, and never deletes, what remains: files that differ from the starter's, files the starter never
 //      had, formatter and hook settings that mention the site folder, and the advice that needs a person.
 //
