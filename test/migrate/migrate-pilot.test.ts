@@ -660,7 +660,7 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
       "dependabot-auto-merge.yml: the condition of the job `merge` (line 5: `github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false`) is a shape init does not rewrite",
     );
     expect(p.advice.join("\n")).toContain(
-      "if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
+      "if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
     );
     expect(p.actions.map((a) => a.path)).not.toContain(".github/workflows/check.yml");
   });

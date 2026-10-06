@@ -631,10 +631,15 @@ export function planMigration(cloneArg, options) {
     const before = text(path);
     if (before === null || !helpers.isAutoMergeWorkflow(before)) continue;
     const patched = helpers.patchAutoMerge(before, siteRel);
-    if (patched.note !== undefined) advise(`${path}: ${patched.note}`);
-    else if (patched.changed) {
-      put(path, before, patched.text, `${siteRel}/ updates now wait for a person`);
+    if (patched.changed) {
+      put(
+        path,
+        before,
+        patched.text,
+        `${siteRel}/ updates and the shared workflows' pin now wait for a person`,
+      );
     }
+    if (patched.note !== undefined) advise(`${path}: ${patched.note}`);
   }
 
   // ---- 6. what remains: listed, never deleted ----

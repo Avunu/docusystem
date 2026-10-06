@@ -145,12 +145,15 @@ Both pull requests run `docs.yml` and upload the built site as a review artifact
 
 <!-- prettier-ignore -->
 ```yaml
-    # The documentation site's package updates (docs-site/) are reviewed by a person: a merge to the
-    # default branch publishes the site.
-    if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}
+    # Updates of the documentation site's packages (docs-site/) and of the commit pin of its shared
+    # workflows (github-actions pull requests) are reviewed by a person: a merge to the default branch
+    # publishes the site.
+    if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}
 ```
 
-The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. The condition may as well test the pull request's author (`github.event.pull_request.user.login == 'dependabot[bot]'`, the form that zizmor recommends) or be a folded `if: >-` block, which gets the exclusion as a new first line; a condition with an `||` is put in parentheses first. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one, and the comment that gave the starter's reason (a workflow gated by a repository variable) now says that the Docs check is path-filtered and cannot be a required check. A shape that `init` cannot rewrite (a quoted condition, several jobs that test for Dependabot, a file that is not valid YAML) is left alone, and `init` prints the condition it found and the finished line to paste. `doctor` reports an auto-merge workflow that lacks the exclusion, and says `docusystem init` does it only when it does.
+The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. The condition may as well test the pull request's author (`github.event.pull_request.user.login == 'dependabot[bot]'`, the form that zizmor recommends) or be a folded `if: >-` block, which gets the exclusion as a new first line; a condition with an `||` is put in parentheses first. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one, and the comment that gave the starter's reason (a workflow gated by a repository variable) now says that the Docs check is path-filtered and cannot be a required check. A workflow that already skips the site's branches gets the second clause right after the first. A shape that `init` cannot rewrite (a quoted condition, several jobs that test for Dependabot, a file that is not valid YAML) is left alone, and `init` prints the condition it found and the finished line to paste. `doctor` reports an auto-merge workflow that lacks either exclusion, and says `docusystem init` does it only when it does.
+
+The second clause is there because the pull request that moves the commit pin is a `github-actions` one, and a merge publishes the site with the new workflow code. It skips every `github-actions` pull request of the repository, not only that one: a grouped pull request is on a branch named after the group (`dependabot/github_actions/<group>-<hash>`), so the branch does not say which dependencies are in it. A workflow that reads `dependabot/fetch-metadata` can skip on `!contains(steps.metadata.outputs.dependency-names, 'Avunu/docusystem')` instead, which `doctor` accepts as well.
 
 > [!NOTE]
 > The `docs.yml` path filter means its check is not reported on pull requests that touch no docs path, so it cannot be a required status check as it stands. Whether to make it always report, so that the exclusion can go, is an open decision of the maintainers; see [MAINTAINING.md](../../MAINTAINING.md).

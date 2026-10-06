@@ -9,6 +9,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import {
+  actionsBranchPrefix,
+  hasActionsExclusion,
   hasSiteExclusion,
   isAutoMergeWorkflow,
   patchAutoMerge,
@@ -395,33 +397,51 @@ function checkDependabot(
 
 function checkAutoMerge(repoRoot: string, siteRel: string, add: Add): void {
   const prefix = siteBranchPrefix(siteRel);
+  const siteClause = `!startsWith(github.head_ref, '${prefix}')`;
+  const actionsClause = `!startsWith(github.head_ref, '${actionsBranchPrefix}')`;
+  // the pull request that moves the pin of the shared workflows is one of Dependabot's github-actions
+  // ones, and a merge publishes the site with the new workflow code
+  const pin =
+    `Dependabot's github-actions pull requests move the commit pin of the shared workflows, and a merge to the default branch publishes the site with the new workflow code: ` +
+    `add ${actionsClause} to the condition`;
   let found = false;
   for (const [file, text] of workflowFiles(repoRoot)) {
     if (!isAutoMergeWorkflow(text)) continue;
     found = true;
     const where = `${WORKFLOWS}/${file}`;
-    if (hasSiteExclusion(text, siteRel)) {
-      add("ok", `${where}: leaves the site's Dependabot pull requests to a person`);
+    const site = hasSiteExclusion(text, siteRel);
+    const actions = hasActionsExclusion(text);
+    if (site && actions) {
+      add(
+        "ok",
+        `${where}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
+      );
       continue;
     }
     // `init` is named only when it would do the fix: otherwise the finding says what to do by hand
     const patch = patchAutoMerge(text, siteRel);
-    const byHand = `\`docusystem init\` cannot patch it: ${patch.note ?? "edit its condition by hand"}`;
-    if (withoutComments(text).includes(`dependabot/bun/${siteRel}`)) {
+    const fixed = (fix: string): string => {
+      if (!patch.changed) {
+        return `\`docusystem init\` cannot patch it: ${patch.note ?? "edit its condition by hand"}`;
+      }
+      return patch.note === undefined
+        ? `${fix} (\`docusystem init\` does)`
+        : `${fix} (\`docusystem init\` does what it can; the rest by hand: ${patch.note})`;
+    };
+    const alsoPin = actions ? "" : `; also, ${pin}`;
+    if (site) {
+      add("error", `${where} does not skip the github-actions pull requests: ${fixed(pin)}`);
+    } else if (withoutComments(text).includes(`dependabot/bun/${siteRel}`)) {
       add(
         "error",
         `${where} excludes dependabot/bun/${siteRel}, but the site's lockfile makes Dependabot's ecosystem npm: its branches are ${prefix}/...  ` +
-          (patch.changed
-            ? `Change the exclusion to !startsWith(github.head_ref, '${prefix}') (\`docusystem init\` does)`
-            : byHand),
+          fixed(`Change the exclusion to ${siteClause}${alsoPin}`),
       );
     } else {
       add(
         "error",
         `${where} merges Dependabot's pull requests but does not skip the site's: a merge to the default branch publishes the site. ` +
-          (patch.changed
-            ? `Add !startsWith(github.head_ref, '${prefix}') to the condition (\`docusystem init\` does)`
-            : byHand),
+          fixed(`Add ${siteClause} to the condition${alsoPin}`),
       );
     }
   }

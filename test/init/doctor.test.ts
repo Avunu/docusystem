@@ -564,7 +564,7 @@ describe("the auto-merge workflow", () => {
     expect(message).toContain("`docusystem init` cannot patch it");
     expect(message).toContain("line 6: `github.actor == 'dependabot[bot]'`");
     expect(message).toContain(
-      "if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
+      "if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
     );
   });
 
@@ -594,7 +594,7 @@ describe("the auto-merge workflow", () => {
     );
   });
 
-  test("an exclusion of exactly the site's npm branches is ok", async () => {
+  test("an exclusion of the site's npm branches alone is an error: the pin of the shared workflows moves in a github-actions pull request", async () => {
     const root = await initialisedRepo();
     writeFileSync(
       join(root, file),
@@ -603,9 +603,53 @@ describe("the auto-merge workflow", () => {
         "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
       ),
     );
+    expect(errors(root)).toContain(`${file} does not skip the github-actions pull requests`);
+    expect(errors(root)).toContain("move the commit pin of the shared workflows");
+    expect(errors(root)).toContain(
+      "add !startsWith(github.head_ref, 'dependabot/github_actions/') to the condition",
+    );
+    expect(at(root, "error")).toHaveLength(1);
+  });
+
+  test("an exclusion of the github-actions branches alone is the site's error", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "'dependabot[bot]' }}",
+        "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
+      ),
+    );
+    expect(errors(root)).toContain("does not skip the site's");
+    expect(errors(root)).not.toContain("also,");
+  });
+
+  test("a workflow that skips neither is told both, and a bun exclusion also gets the pin", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(join(root, file), AUTOMERGE);
+    expect(errors(root)).toContain("also, Dependabot's github-actions pull requests move");
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "'dependabot[bot]' }}",
+        "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/bun/docs-site') }}",
+      ),
+    );
+    expect(errors(root)).toContain("also, Dependabot's github-actions pull requests move");
+  });
+
+  test("an exclusion of exactly the site's npm branches and of the github-actions ones is ok", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "'dependabot[bot]' }}",
+        "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
+      ),
+    );
     expect(at(root, "error")).toEqual([]);
     expect(all(root).map((f) => f.message)).toContain(
-      `${file}: leaves the site's Dependabot pull requests to a person`,
+      `${file}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
     );
   });
 
@@ -672,7 +716,7 @@ describe("the auto-merge workflow", () => {
     writeFileSync(join(root, "docs/README.md"), "# x\n");
     expect(at(root, "error")).toEqual([]);
     expect(all(root).map((f) => f.message)).toContain(
-      `${file}: leaves the site's Dependabot pull requests to a person`,
+      `${file}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
     );
   });
 

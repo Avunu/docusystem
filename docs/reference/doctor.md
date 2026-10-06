@@ -64,6 +64,7 @@ The file is parsed, not searched: an `npm /` entry followed by a `bun /docs-site
 Errors:
 
 - An auto-merge workflow lacks an exclusion for exactly `dependabot/npm_and_yarn/<site folder>`. A `dependabot/bun/...` exclusion counts as missing, because the shell's lockfile makes Dependabot's ecosystem `npm`. The message says that `docusystem init` fixes it only when `init` can patch that workflow; otherwise it says what to do by hand, with the finished `if:` line.
+- An auto-merge workflow lacks an exclusion for the `github-actions` pull requests (`!startsWith(github.head_ref, 'dependabot/github_actions/')`, or a negated `dependency-names` test of `Avunu/docusystem`): the pull request that moves the pin of the shared workflows would merge by itself, and a merge publishes the site with the new workflow code.
 
 ## Lockfile
 
