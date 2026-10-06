@@ -18,6 +18,13 @@ vi.mock("../../src/lib/catalog.js", async (importOriginal) => ({
 }));
 
 const fake = vi.mocked(syncCatalog);
+
+/**
+ * What the fake sync answers. The frozen contract is `{ ok, message }`; WP1's real function adds an
+ * `outcome`, so the answer is typed by the function under test and works against either.
+ */
+const answer = (ok: boolean, message: string) =>
+  ({ ok, message, outcome: ok ? "written" : "failed" }) as Awaited<ReturnType<typeof syncCatalog>>;
 const LIVE = {
   version: 1,
   generated: "2026-10-07T00:00:00Z",
@@ -47,7 +54,7 @@ describe("the catalog of the root", () => {
   test("a live copy that sync accepts replaces the bundled one and is recorded as generated", async () => {
     fake.mockImplementation(async ({ out }) => {
       writeFileSync(out, JSON.stringify(LIVE));
-      return { ok: true, message: "fetched 0 projects" };
+      return answer(true, "fetched 0 projects");
     });
     const shell = makeShell();
     const result = await run(shell, { refreshCatalog: true });
@@ -89,7 +96,7 @@ describe("the catalog of the root", () => {
     ],
     ["nothing: avunu.net", {}, CATALOG_URL],
   ])("fetches from %s", async (_what, extra, url) => {
-    fake.mockResolvedValue({ ok: false, message: "unreachable" });
+    fake.mockResolvedValue(answer(false, "unreachable"));
     await run(makeShell(), { refreshCatalog: true, ...extra });
     expect(fake.mock.calls[0]?.[0].url).toBe(url);
   });
@@ -98,7 +105,7 @@ describe("the catalog of the root", () => {
     fake.mockImplementation(async ({ out }) => {
       // Even a file that a misbehaving sync left behind is not taken.
       writeFileSync(out, "{}");
-      return { ok: false, message: "the live catalog is version 2, not 1" };
+      return answer(false, "the live catalog is version 2, not 1");
     });
     const shell = makeShell();
     const result = await run(shell, { refreshCatalog: true });
