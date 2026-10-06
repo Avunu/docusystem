@@ -22,7 +22,7 @@
 // for them (test/integration/jx-canary.test.ts); `runPipeline` is `runPipelineWith` with the real ones.
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { assemble, type AssembleArgs, type Assembly } from "./assemble.js";
 import { assertBuild } from "./assert.js";
 import { annotation } from "./ci.js";
@@ -190,6 +190,10 @@ export interface PipelineHooks {
   whileLocked?: (result: PipelineResult) => Promise<void>;
 }
 
+/** The stage prefixes of the output (section 4.1), at the start of a line that was written with one. */
+const PREFIXED =
+  /^(preflight|assemble|stage|lint|nav|jx|postbuild|assert|contrast|links|overrides|catalog): ?/;
+
 /** The error classes that mean a bug in this package, not a problem with the project (main.ts agrees). */
 const isInternal = (error: unknown): boolean =>
   error instanceof TypeError ||
@@ -316,22 +320,37 @@ export async function runPipelineWith(
     }
     for (const file of assembly.added) log(`overrides: ${file} is added to the package's files`);
     log(`catalog: ${manifest.catalog === "live" ? "live copy" : "bundled snapshot"}`);
-    const prefixed =
-      /^(preflight|assemble|stage|lint|nav|jx|postbuild|assert|contrast|links|overrides|catalog): ?/;
-    for (const warning of assembly.warnings) {
-      const stage = prefixed.exec(warning)?.[1] ?? "assemble";
-      warn(stage, warning.replace(prefixed, ""));
+    // WP2 hands over complete lines that carry their own stage prefix (`overrides: ...`, `catalog: ...`,
+    // `assemble: ...`): they are printed as they are, and recorded without the prefix.
+    const stageOf = (line: string): { stage: string; text: string; shown: string } => {
+      const found = PREFIXED.exec(line);
+      return found === null
+        ? { stage: "assemble", text: line, shown: `assemble: ${line}` }
+        : { stage: found[1]!, text: line.slice(found[0].length), shown: line };
+    };
+    for (const line of assembly.warnings) {
+      const { stage, text, shown } = stageOf(line);
+      error(shown);
+      record("warning", stage, text);
     }
     for (const skipped of assembly.skipped) {
-      const message = `${skipped.path} is ${skipped.reason}: not published`;
-      log(`assemble: ${message}`);
-      documentProblem("assemble", message);
+      // relative to the site folder (`public/logo.svg`); the reader and GitHub know it from the repository root
+      const file = repoRelative(join(paths.siteDir, skipped.path));
+      const message = `${file} is ${skipped.reason}: not published`;
+      error(`assemble: ${message}`);
+      documentProblem("assemble", message, { file });
     }
-    for (const message of assembly.errors) {
-      const stage = prefixed.exec(message)?.[1] ?? "assemble";
-      fail(stage, message.replace(prefixed, ""));
+    for (const line of assembly.errors) {
+      const { stage, text, shown } = stageOf(line);
+      error(shown);
+      record("error", stage, text);
     }
-    if (assembly.errors.length > 0) return result(false, { paths, config, assembly });
+    if (assembly.errors.length > 0) {
+      error(
+        `docusystem: the project could not be assembled (${assembly.errors.length} error(s) above): nothing was built`,
+      );
+      return result(false, { paths, config, assembly });
+    }
 
     // ---- step 5: stage ----
     const staged: StageResult = deps.stageSite(paths, config, branch);
@@ -343,7 +362,7 @@ export async function runPipelineWith(
     }
     for (const skipped of staged.skipped) {
       const message = `${docsFile(skipped.path)} is ${skipped.reason}: not published`;
-      log(`stage: ${message}`);
+      error(`stage: ${message}`);
       documentProblem("stage", message, { file: docsFile(skipped.path) });
     }
     log(

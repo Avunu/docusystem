@@ -325,9 +325,9 @@ describe("a strict build with document problems", () => {
   test("a skipped symbolic link is a document problem", async () => {
     const world = makeWorld();
     world.stage = { skipped: [{ path: "x.md", reason: "a symbolic link outside the repository" }] };
-    const { result, out, err } = await run(world, { strict: true });
+    const { result, err } = await run(world, { strict: true });
     expect(result.ok).toBe(false);
-    expect(out).toContain(
+    expect(err).toContain(
       "stage: docs/x.md is a symbolic link outside the repository: not published",
     );
     expect(err.at(-1)).toBe(strictFailure(1));
@@ -340,11 +340,16 @@ describe("a strict build with document problems", () => {
 
   test("so is a skipped link in overrides/ or public/", async () => {
     const world = makeWorld();
-    world.assemblySkipped = [
-      { path: "overrides/pages/x.json", reason: "a symbolic link into .git" },
-    ];
-    const { result, err } = await run(world, { strict: true });
+    // WP2 reports the path relative to the site folder; the pipeline words it from the repository root
+    world.assemblySkipped = [{ path: "public/logo.svg", reason: "a symbolic link into .git" }];
+    const { result, out, err } = await run(world, { strict: true, ci: true });
     expect(result.ok).toBe(false);
+    expect(err).toContain(
+      "assemble: docs-site/public/logo.svg is a symbolic link into .git: not published",
+    );
+    expect(out).toContain(
+      "::error file=docs-site/public/logo.svg,title=assemble::docs-site/public/logo.svg is a symbolic link into .git: not published",
+    );
     expect(err.at(-1)).toBe(strictFailure(1));
   });
 });
@@ -588,17 +593,39 @@ describe("what stops the pipeline early", () => {
     ]);
   });
 
-  test("assembly errors stop the run before staging, with the lock released", async () => {
+  test("assembly lines are printed as WP2 words them (they carry their own prefix); errors stop the run before staging", async () => {
     const world = makeWorld();
-    world.assemblyErrors = ["overrides/components/sub/x.json: components must be flat"];
-    world.assemblyWarnings = ["overrides: jx.$media replaces 5 entries of the package's list"];
+    world.assemblyErrors = [
+      "overrides: overrides/components/sub/x.json is nested: Jx registers only components/*.json",
+      "bare error without a prefix",
+    ];
+    world.assemblyWarnings = [
+      "overrides: jx.$media replaces 5 entries of the package's list",
+      "catalog: https://avunu.net/projects.json answered 404; using the catalog bundled with docusystem 0.1.0",
+    ];
     const { result, err } = await run(world, { strict: true });
     expect(result.ok).toBe(false);
     expect(world.calls).toEqual(["findSiteDir", "preflight", "lock", "assemble", "unlock"]);
-    expect(err).toContain("overrides: warning: jx.$media replaces 5 entries of the package's list");
-    expect(err).toContain(
-      "assemble: error: overrides/components/sub/x.json: components must be flat",
-    );
+    expect(err).toEqual([
+      "overrides: jx.$media replaces 5 entries of the package's list",
+      "catalog: https://avunu.net/projects.json answered 404; using the catalog bundled with docusystem 0.1.0",
+      "overrides: overrides/components/sub/x.json is nested: Jx registers only components/*.json",
+      "assemble: bare error without a prefix",
+      "docusystem: the project could not be assembled (2 error(s) above): nothing was built",
+    ]);
+    expect(result.problems).toEqual([
+      { level: "warning", message: "jx.$media replaces 5 entries of the package's list" },
+      {
+        level: "warning",
+        message:
+          "https://avunu.net/projects.json answered 404; using the catalog bundled with docusystem 0.1.0",
+      },
+      {
+        level: "error",
+        message: "overrides/components/sub/x.json is nested: Jx registers only components/*.json",
+      },
+      { level: "error", message: "bare error without a prefix" },
+    ]);
     expect(result.assembly).toBeDefined();
   });
 

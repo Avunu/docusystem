@@ -267,7 +267,11 @@ describe.skipIf(waiting.length > 0)(
           signal: controller.signal,
         });
         try {
-          await until(() => out.some((line) => line.startsWith("dev: http://")) || err.length > 0);
+          let exited = false;
+          void done.then(() => {
+            exited = true;
+          });
+          await until(() => out.some((line) => line.startsWith("dev: http://")) || exited);
           const start = out.find((line) => line.startsWith("dev: http://"));
           expect(start, err.join("\n")).toBeDefined();
           const base = /^dev: (http:\/\/127\.0\.0\.1:\d+)\//.exec(start!)![1]!;
