@@ -132,6 +132,17 @@ test("docs/README.md is required", () => {
   expect(() => nav({ "a.md": "# A\n" })).toThrow(/docs\/README\.md is missing/);
 });
 
+test("the missing-home message names the real Markdown folder", () => {
+  const files = readDocs(makeTree({ "a.md": "# A\n" }));
+  expect(() => buildNav(files, "x", "documentation")).toThrow(
+    /^documentation\/README\.md is missing/,
+  );
+  expect(() => buildNav(files, "x", "guide/book")).toThrow(/^guide\/book\/README\.md is missing/);
+  // the repository root as the Markdown folder: the file is README.md, not /README.md
+  expect(() => buildNav(files, "x", "")).toThrow(/^README\.md is missing/);
+  expect(() => buildNav(files, "x", ".")).toThrow(/^README\.md is missing/);
+});
+
 test("the sidebar starts every section open when the docs are small", () => {
   expect(nav({ "README.md": "# H\n", "a.md": "# A\n" }).nav.expandAll).toBe(true);
   const many: Record<string, string> = { "README.md": "# H\n" };
@@ -213,6 +224,14 @@ test("writeNav without a README says what to add, and writes nothing", () => {
   writeTree(paths.stagedDocs, { "a.md": "# A\n" });
   expect(() => writeNav(paths, { name: "x" })).toThrow(/docs\/README\.md is missing/);
   expect(existsSync(paths.navFile)).toBe(false);
+});
+
+test("writeNav passes the Markdown folder to the missing-home message", () => {
+  const paths = pathsIn(makeTree({}));
+  writeTree(paths.stagedDocs, { "a.md": "# A\n" });
+  expect(() => writeNav(paths, { name: "x" }, { folder: "documentation" })).toThrow(
+    /^documentation\/README\.md is missing/,
+  );
 });
 
 test("a page whose frontmatter is not valid YAML is listed as if it had none, with a warning that names it", () => {

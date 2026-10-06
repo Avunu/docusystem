@@ -235,7 +235,8 @@ export function makeWorld(options: WorldOptions = {}): World {
       world.calls.push("lint");
       return world.lint;
     },
-    formatIssue: (issue) => `docs/${issue.file}:${issue.line}  ${issue.message}`,
+    formatIssue: (issue, o) =>
+      `${o?.prefix ?? "docs"}/${issue.file}:${issue.line}  ${issue.message}`,
     writeNav: () => {
       world.calls.push("nav");
       const urls = Array.from({ length: docsPages() }, (_, i) =>

@@ -114,17 +114,22 @@ function group(folder: Folder, visible: (file: DocFile) => boolean): NavGroup {
  * (deeper folders are listed inside their group, so the sidebar is never more than three levels).
  * A page with `hidden: true` is published and reachable, but is left out of the sidebar and of
  * previous/next. Throws when docs/ has no README.md (or index.md): it is the documentation home.
+ * `docsFolder` is the Markdown folder relative to the repository root (`docs`, or `documentation` for
+ * `"docs": "../documentation"`; "" or "." for the root itself), so that the message names the real file.
  */
 export function buildNav(
   published: DocFile[],
   name = "Documentation",
+  docsFolder = "docs",
 ): { nav: NavData; warnings: string[] } {
   const { files, duplicates } = dedupe(published);
   const warnings = [...duplicates];
   const root = tree(files);
   if (!root.index) {
+    const readme =
+      docsFolder === "" || docsFolder === "." ? "README.md" : `${docsFolder}/README.md`;
     throw new Error(
-      "docs/README.md is missing: it is the documentation home (/docs/). Add one, or an index.md.",
+      `${readme} is missing: it is the documentation home (/docs/). Add one, or an index.md.`,
     );
   }
   const home = root.index;
@@ -208,14 +213,16 @@ export function buildNav(
  *
  * A page whose frontmatter is not valid YAML does not stop the step: it is listed as if it had no
  * frontmatter and a warning names the problem (the lint reports it as an error, and Jx refuses the
- * page, so the build does not publish). Throws only when the documentation has no home page.
+ * page, so the build does not publish). Throws only when the documentation has no home page;
+ * `o.folder` is the Markdown folder as buildNav takes it.
  */
 export function writeNav(
   paths: Pick<Paths, "stagedDocs" | "navFile">,
   config: Pick<DocsConfig, "name">,
+  o: { folder?: string } = {},
 ): { nav: NavData; warnings: string[]; pages: number } {
   const { files, problems } = readDocsWithProblems(paths.stagedDocs);
-  const { nav, warnings } = buildNav(files, config.name);
+  const { nav, warnings } = buildNav(files, config.name, o.folder);
   writeJson(paths.navFile, nav);
   return {
     nav,

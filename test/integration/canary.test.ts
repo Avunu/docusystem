@@ -7,7 +7,7 @@
 // real after the packages are merged. jx-canary.test.ts runs the same trees through the real pipeline
 // and the real Jx with stand-ins for those packages, and always runs.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { run } from "../../src/main.js";
@@ -215,6 +215,30 @@ describe.skipIf(waiting.length > 0)(
           /^::error file=docs\/README\.md,line=\d+,title=lint::.*Reference-style links/m,
         );
         expect(stdout.split("\n").at(-1)).toBe("check: FAILED");
+      });
+
+      test("a Markdown folder that is not docs/ is the folder that lint, the build output and the annotations name", async () => {
+        // "docs": "../documentation": the paths must be the ones GitHub can find in the repository
+        const repo = repoFrom("canary/broken");
+        renameSync(repo.docsDir, join(repo.dir, "documentation"));
+        writeFileSync(
+          join(repo.siteDir, "docusystem.config.json"),
+          JSON.stringify({ ...repo.config, docs: "../documentation" }),
+        );
+
+        const lint = await cli(repo, ["lint"]);
+        expect(lint.code).toBe(1);
+        expect(lint.stdout).toMatch(/^error: documentation\/README\.md:\d+ .*Footnotes/m);
+
+        const checked = await cli(repo, ["check", "--ci"]);
+        expect(checked.code).toBe(1);
+        expect(checked.stderr).toMatch(/^lint: error: documentation\/README\.md:\d+ .*Footnotes/m);
+        expect(checked.stdout).toMatch(
+          /^::error file=documentation\/README\.md,line=\d+,title=lint::.*Footnotes/m,
+        );
+        expect(`${lint.stdout}\n${checked.stdout}\n${checked.stderr}`).not.toMatch(
+          /\bdocs\/README/,
+        );
       });
     });
 
