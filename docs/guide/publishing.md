@@ -97,6 +97,8 @@ None of this can be done by a pull request. `docusystem init` prints it with you
 
    Until it is set, `docs-publish.yml` only builds and checks.
 
+   Set it after avunu.net has relaunched. The Projects menu lists the projects of avunu.net's catalog and links each one to its docs site or, when it has none, to its page `https://avunu.net/open-source/<slug>/`. Until avunu.net serves `https://avunu.net/projects.json` and those pages, the browser's fetch of the live catalog fails quietly, the menu keeps the list bundled in the package, and its links to avunu.net pages answer 404. Nothing else is affected, and nothing needs rebuilding afterwards: the links start to work when avunu.net publishes the pages. Enabling the site earlier means accepting a dead menu; [Launch order for the Projects menu](../../MAINTAINING.md#launch-order-for-the-projects-menu) says when that is reasonable.
+
 6. **Protect the default branch.** Every push to it publishes. Require a pull request and the repository's own CI check, so that nothing reaches the site without a review.
 7. **List the site in the catalog.** In avunu.net's catalog entry for the project, set `docs: https://<domain>`. The project switcher of every docs site then links to it.
 
