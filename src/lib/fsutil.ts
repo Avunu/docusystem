@@ -54,12 +54,20 @@ function lstatOrNull(path: string): Stats | null {
   }
 }
 
-/** Folders that are never published, whatever their depth; their names are the whole rule. */
+/** Folders that are never published, whatever their depth; their (lower-case) names are the whole rule. */
 const NEVER_PUBLISHED = new Map([
   [".git", "a symbolic link into .git"],
   ["node_modules", "a symbolic link into node_modules"],
   [".docusystem", "a symbolic link into .docusystem"],
 ]);
+
+/**
+ * The most directory entries one `walkFiles` call reads before it gives up. A real documentation tree
+ * is far below it; a tree of symbolic links that lead to the same folders again and again (each link
+ * is followed, so the number of paths doubles with every level) is not, and would otherwise keep a
+ * build busy for hours and fill its memory.
+ */
+export const MAX_WALK_ENTRIES = 50_000;
 
 export interface WalkOptions {
   /** The repository root: nothing outside it is published. */
@@ -70,6 +78,8 @@ export interface WalkOptions {
    * `.docusystem`) are.
    */
   siteDir?: string;
+  /** A lower limit than MAX_WALK_ENTRIES, for tests. */
+  maxEntries?: number;
 }
 
 /**
@@ -91,6 +101,11 @@ export interface WalkOptions {
  *   entered and not reported: they are never content (this matters when the Markdown folder is the
  *   repository root).
  * - Anything that is neither a file, a folder nor a link (a socket, a device) is skipped and reported.
+ * - More than MAX_WALK_ENTRIES directory entries (links are followed, so a few links can lead to
+ *   millions of paths) is an error, not a very long walk.
+ *
+ * Names are compared without regard to case (`.GIT` is `.git` on a case-insensitive file system, and
+ * `realpath` does not correct the case of what it was given).
  */
 export function walkFiles(dir: string, o: WalkOptions): WalkResult {
   const top = resolve(dir);
@@ -115,12 +130,14 @@ export function walkFiles(dir: string, o: WalkOptions): WalkResult {
   const skipped: SkippedPath[] = [];
   /** The real paths of the folders on the way down to the one being read. */
   const chain = new Set<string>();
+  const limit = o.maxEntries ?? MAX_WALK_ENTRIES;
+  let read = 0;
 
   /** Why a real path may not be followed to, or null when it may. */
   const refusal = (real: string): string | null => {
     if (!isInside(repo, real)) return "a symbolic link outside the repository";
     for (const part of relative(repo, real).split(sep)) {
-      const reason = NEVER_PUBLISHED.get(part);
+      const reason = NEVER_PUBLISHED.get(part.toLowerCase());
       if (reason !== undefined) return reason;
     }
     if (siteDist !== null && isInside(siteDist, real)) {
@@ -166,13 +183,19 @@ export function walkFiles(dir: string, o: WalkOptions): WalkResult {
   const descend = (abs: string, rel: string, real: string): void => {
     chain.add(real);
     for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      if (++read > limit) {
+        throw new Error(
+          `${dir} has more than ${limit} files and folders once symbolic links are followed: ` +
+            "a link that leads back to folders that are listed already? Refusing to walk it",
+        );
+      }
       const childAbs = join(abs, entry.name);
       const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
       if (entry.isSymbolicLink()) {
         follow(childAbs, childRel);
       } else if (entry.isDirectory()) {
         const childReal = join(real, entry.name);
-        if (NEVER_PUBLISHED.has(entry.name) || childReal === siteDist) continue;
+        if (NEVER_PUBLISHED.has(entry.name.toLowerCase()) || childReal === siteDist) continue;
         if (chain.has(childReal)) {
           // Reached again through a link that led out of this folder and back into it.
           skipped.push({

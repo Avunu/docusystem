@@ -173,6 +173,22 @@ describe("usage errors exit 2, with the message and the help on standard error",
     expect(stderr).toContain("--site-dir");
   });
 
+  test("an option given an empty value", async () => {
+    for (const argv of [
+      ["build", "--site="],
+      ["build", "--site", ""],
+      ["dev", "--port="],
+      ["init", "--name", ""],
+      ["init", "--tagline="],
+    ]) {
+      const { ctx, code, stderr } = await dispatch(argv);
+      expect(ctx, argv.join(" ")).toBeUndefined();
+      expect(code, argv.join(" ")).toBe(2);
+      expect(stderr).toMatch(/docusystem: --(site|port|name|tagline) needs a value/);
+      expect(stderr).toContain(`Usage: docusystem ${argv[0]}`);
+    }
+  });
+
   test("--strict together with --lenient", async () => {
     const { ctx, code, stderr } = await dispatch(["build", "--strict", "--lenient"]);
     expect(ctx).toBeUndefined();
@@ -194,7 +210,7 @@ describe("usage errors exit 2, with the message and the help on standard error",
   });
 
   test("--port must be a whole number from 0 to 65535", async () => {
-    for (const port of ["abc", "-1", "1.5", "65536", "", "3000x", "1e3"]) {
+    for (const port of ["abc", "-1", "1.5", "65536", "3000x", "1e3"]) {
       const { ctx, code, stderr } = await dispatch(["dev", `--port=${port}`]);
       expect(ctx, port).toBeUndefined();
       expect(code, port).toBe(2);

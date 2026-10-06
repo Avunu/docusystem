@@ -14,6 +14,7 @@ import {
   copyFile,
   ensureRealDir,
   isInside,
+  MAX_WALK_ENTRIES,
   removeInside,
   replaceDir,
   sha256,
@@ -283,6 +284,68 @@ describe("walkFiles", () => {
           { path: "up/docs", reason: "a folder that a symbolic link leads back into (a cycle)" },
         ],
       });
+    });
+  });
+
+  describe("the walk is bounded", () => {
+    /** `d0` holds two links to `d1`, which holds two links to `d2`, ...: 2^depth paths to one file. */
+    const diamond = (depth: number) => {
+      const spec: Spec = { [`docs/d${depth}/leaf.md`]: "leaf" };
+      for (let i = 0; i < depth; i++) {
+        spec[`docs/d${i}/a`] = { symlink: `../d${i + 1}` };
+        spec[`docs/d${i}/b`] = { symlink: `../d${i + 1}` };
+      }
+      return layout(spec);
+    };
+
+    test("links that lead to the same folders again and again are an error, not a very long walk", () => {
+      const { repo, docs } = diamond(30); // 2^30 paths if every link were followed
+      expect(() => walkFiles(docs, { repoRoot: repo, maxEntries: 500 })).toThrow(
+        /has more than 500 files and folders once symbolic links are followed/,
+      );
+    });
+
+    test("the same tree is fine when it is small enough, and the limit counts entries read", () => {
+      const { repo, docs } = diamond(3);
+      const { files } = walkFiles(docs, { repoRoot: repo });
+      // d0 reaches the leaf by 8 paths, d1 by 4, d2 by 2, d3 by 1: every link is followed.
+      expect(files).toHaveLength(15);
+      expect(() => walkFiles(docs, { repoRoot: repo, maxEntries: 5 })).toThrow(/more than 5/);
+      expect(() => walkFiles(docs, { repoRoot: repo, maxEntries: 100 })).not.toThrow();
+    });
+
+    test("the default limit is large enough for any documentation tree", () => {
+      expect(MAX_WALK_ENTRIES).toBeGreaterThanOrEqual(50_000);
+      const { repo } = layout({ "docs/a.md": "a" });
+      expect(walkFiles(join(repo, "docs"), { repoRoot: repo }).files).toEqual(["a.md"]);
+    });
+  });
+
+  describe("the names of the refused folders are compared without regard to case", () => {
+    test("a link into .GIT or Node_Modules is refused (on a case-insensitive file system it is .git)", () => {
+      const { repo, docs } = layout({
+        "docs/ok.md": "ok",
+        ".GIT/config": "[remote] token",
+        "Node_Modules/pkg/index.js": "x",
+        "docs/git-config.md": { symlink: "../.GIT/config" },
+        "docs/modules": { symlink: "../Node_Modules" },
+      });
+      expect(walkFiles(docs, { repoRoot: repo })).toEqual({
+        files: ["ok.md"],
+        skipped: [
+          { path: "git-config.md", reason: "a symbolic link into .git" },
+          { path: "modules", reason: "a symbolic link into node_modules" },
+        ],
+      });
+    });
+
+    test("real folders with those names are not entered either", () => {
+      const { repo, docs } = layout({
+        "docs/ok.md": "ok",
+        "docs/.GIT/HEAD": "ref",
+        "docs/Node_Modules/pkg/index.md": "x",
+      });
+      expect(walkFiles(docs, { repoRoot: repo })).toEqual({ files: ["ok.md"], skipped: [] });
     });
   });
 

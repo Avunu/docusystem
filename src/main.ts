@@ -575,6 +575,9 @@ export async function run(
           : "";
       return usageError(io, `${command} does not take --${option}${hint}`, command);
     }
+    // `--site=` or `--name ""`: no option has an empty value that means something, and a command
+    // should not have to tell "" from "not given".
+    if (value === "") return usageError(io, `--${option} needs a value`, command);
     options[SPECS[option]!.key] = value as string | boolean;
   }
   if (spec.positionals === "none" && args.length > 0) {
