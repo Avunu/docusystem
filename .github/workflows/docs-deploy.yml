@@ -1,0 +1,51 @@
+name: Docs deploy
+
+# The reusable workflow that publishes a documentation site to GitHub Pages. It runs no project code:
+# it downloads the artifact docs-build.yml packaged in the same run and hands it to GitHub Pages. A
+# project calls it from docs-publish.yml, after docs-build.yml with `pages-artifact: true`:
+#
+#   deploy:
+#     needs: build
+#     if: ${{ vars.DOCS_SITE_ENABLED == 'true' }}
+#     permissions:
+#       pages: write
+#       id-token: write
+#     uses: Avunu/docusystem/.github/workflows/docs-deploy.yml@<40-character commit> # v1.2.3
+#
+# It is separate from docs-build.yml so that the only workflow file a pull request can trigger never
+# asks for `pages: write` or `id-token: write`: those permissions exist only here, in a job that
+# runs on a push or a manual run of the default branch.
+on:
+  workflow_call:
+    outputs:
+      page-url:
+        description: The address of the published site.
+        value: ${{ jobs.deploy.outputs.page-url }}
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: Publish
+    if: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write # publish the artifact
+      id-token: write # prove to Pages that this run made it
+    concurrency:
+      group: pages
+      cancel-in-progress: false # never cancel a deployment half way
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page-url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Fails with a plain message when Pages is not enabled, before anything is published.
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

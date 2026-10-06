@@ -1,0 +1,12 @@
+{
+  "$paths": { "contentType": "docs" },
+  "title": "${state.page.data.title}",
+  "state": {
+    "page": { "$prototype": "ContentEntry", "contentType": "docs", "timing": "compiler" }
+  },
+  "tagName": "main",
+  "children": [
+    { "tagName": "h1", "textContent": "${state.page.data.title}" },
+    { "tagName": "article", "children": "${state.page.$children ?? []}" }
+  ]
+}

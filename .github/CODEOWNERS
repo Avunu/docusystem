@@ -1,0 +1,11 @@
+# Every change is reviewed by the maintainers. Replace with a team handle when one exists.
+* @batonac
+
+# The release pipeline and the reusable workflow run with publishing rights: always a maintainer.
+/.github/ @batonac
+/release-please-config.json @batonac
+/.release-please-manifest.json @batonac
+/package.json @batonac
+
+# What `init` writes into every adopting repository, a workflow with deploy permissions included.
+/scaffold/ @batonac

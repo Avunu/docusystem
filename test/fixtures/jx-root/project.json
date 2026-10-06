@@ -1,0 +1,17 @@
+{
+  "name": "Minimal root",
+  "url": "https://minimal.example.invalid",
+  "defaults": { "lang": "en" },
+  "content": {
+    "docs": {
+      "source": "./.generated/docs",
+      "format": "Markdown",
+      "exclude": ["**/node_modules/**", "**/.*", "**/.*/**", "**/_*", "**/_*/**"],
+      "route": "/docs/{id:slug}/",
+      "indexRoute": "/docs/{dir:slug}/",
+      "links": "warn"
+    }
+  },
+  "build": { "outDir": "./dist", "trailingSlash": "always" },
+  "extensions": ["@jxsuite/parser"]
+}

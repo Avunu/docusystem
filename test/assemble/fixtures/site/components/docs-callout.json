@@ -1,0 +1,6 @@
+{
+  "$id": "DocsCallout",
+  "tagName": "docs-callout",
+  "style": { "display": "block", "padding": "12px", "backgroundColor": "var(--color-bg)", "color": "var(--color-text)" },
+  "children": [{ "tagName": "slot" }]
+}

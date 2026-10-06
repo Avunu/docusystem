@@ -1,0 +1,50 @@
+version: 2
+
+# Updates arrive as pull requests that a person merges after `ci` is green. The commit prefixes matter:
+# release-please reads them. A runtime dependency, above all the exact-pinned Jx packages, is
+# `fix(deps)`, so a Jx release becomes a patch release of this package and reaches every documentation
+# site through its single @avunu/docusystem dependency. Development dependencies and CI are
+# `chore(deps-dev)` and `ci(deps)`, which never cut a release on their own.
+#
+# The update chain for Jx: Dependabot's `jx` group here -> the whole `ci` workflow, including the
+# real-Jx canary, the consumer matrix and the Chrome suites -> a person merges -> release-please proposes
+# a patch -> the fleet job runs on the release pull request -> publish -> each site's own Dependabot
+# pull request. jx-latest.yml is the early warning for a release Dependabot has not proposed yet.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+      include: scope
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      exclude: ["@jxsuite/*"] # Avunu's own framework: a fix should reach the sites within days, not weeks
+    groups:
+      jx:
+        patterns: ["@jxsuite/*"]
+      runtime:
+        dependency-type: production
+        patterns: ["yaml"]
+      tooling:
+        dependency-type: development
+        patterns: ["*"]
+    ignore:
+      # The types follow the Node floor (22.19) the package supports, not the newest Node.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope

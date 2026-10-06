@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "generated": "2026-10-06T00:00:00Z",
+  "site": "https://avunu.net",
+  "projects": [
+    {
+      "slug": "carbon_frappe",
+      "title": "Carbon Frappe",
+      "platform": "frappe",
+      "summary": "A complete IBM Carbon Design System theme for Frappe and ERPNext, covering the desk, website, login, email, charts, and tables.",
+      "repo": "https://github.com/Avunu/carbon_frappe",
+      "page": "https://avunu.net/open-source/carbon_frappe/",
+      "docs": null,
+      "license": "MIT",
+      "status": "active",
+      "suite": null
+    },
+    {
+      "slug": "erpnext_taskview",
+      "title": "ERPNext TaskView",
+      "platform": "frappe",
+      "summary": "A project and task workspace for ERPNext, with timers and hour budgets for staff and a portal where customers follow and work on their projects.",
+      "repo": "https://github.com/Avunu/erpnext_taskview",
+      "page": "https://avunu.net/open-source/erpnext_taskview/",
+      "docs": null,
+      "license": "MIT",
+      "status": "active",
+      "suite": null
+    },
+    {
+      "slug": "frappe-nix",
+      "title": "frappe-nix",
+      "platform": "nixos",
+      "summary": "Reproducible Nix infrastructure for Frappe and ERPNext, from the development shell to OCI containers and a multi-site NixOS module.",
+      "repo": "https://github.com/Avunu/frappe-nix",
+      "page": "https://avunu.net/open-source/frappe-nix/",
+      "docs": null,
+      "license": "MIT",
+      "status": "active",
+      "suite": "nix-platform"
+    }
+  ]
+}
