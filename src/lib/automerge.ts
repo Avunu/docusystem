@@ -33,6 +33,14 @@ export function hasSiteExclusion(text: string, site: string): boolean {
     .some((line) => mention.test(line) && line.includes("!"));
 }
 
+/**
+ * The reason the first adopters gave for leaving the site out of auto-merge: their own starter's workflow
+ * was gated by a repository variable. The shared `docs.yml` is not (only the deploy waits for the
+ * variable); what keeps it from being a required check is its path filter.
+ */
+const STARTER_REASON =
+  /the Docs([ \t]+|[ \t]*\r?\n[ \t]*#[ \t]*)workflow that builds the site is gated by a repository variable and is not a required check/;
+
 /** `github.actor` and the pull request's author are the two ways a workflow tells that Dependabot is the one it is dealing with. */
 const WHO = String.raw`(?:github\.actor|github\.event\.pull_request\.user\.login)`;
 const DEPENDABOT = String.raw`'dependabot\[bot\]'`;
@@ -163,7 +171,8 @@ function patchCondition(
  *   as `${{ ... }}`, a bare expression, or a folded block, gets `&& !startsWith(github.head_ref,
  *   'dependabot/npm_and_yarn/<site>')` and a two-line comment;
  * - an existing `dependabot/bun/<site>` exclusion (the copied starter has it) becomes
- *   `dependabot/npm_and_yarn/<site>`;
+ *   `dependabot/npm_and_yarn/<site>`, and the comment that gives the starter's reason (a workflow gated
+ *   by a repository variable) gives the shared workflow's instead (its check is path-filtered);
  * - a workflow that excludes the site already is left alone;
  * - any other shape (no such job, several, a quoted or mixed condition, invalid YAML) is left alone and
  *   `note` says what to do by hand, with the finished line to paste when there is one condition to build it from.
@@ -177,7 +186,13 @@ export function patchAutoMerge(
 
   const bun = `dependabot/bun/${site}`;
   if (new RegExp(`${escapeRegExp(bun)}(?=['"/\\s)])`).test(withoutComments(text))) {
-    const next = text.replaceAll(bun, wanted);
+    const next = text
+      .replaceAll(bun, wanted)
+      .replace(
+        STARTER_REASON,
+        (_reason, gap: string) =>
+          `the Docs${gap}check is path-filtered and cannot be a required check`,
+      );
     return { text: next, changed: next !== text };
   }
 

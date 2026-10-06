@@ -87,7 +87,7 @@ describe("the standard condition", () => {
 describe.each(PILOTS)("the real auto-merge workflow of %s", (pilot) => {
   const real = readFixture("pilots", pilot, ".github", "workflows", "dependabot-auto-merge.yml");
 
-  test("excludes dependabot/bun/docs-site: it is rewritten to the npm branch, a one-line diff", () => {
+  test("excludes dependabot/bun/docs-site: it is rewritten to the npm branch, and the reason that no longer holds is corrected", () => {
     expect(hasSiteExclusion(real, "docs-site")).toBe(false); // the bun exclusion counts as missing
     const { text, changed } = patchAutoMerge(real, "docs-site");
     expect(changed).toBe(true);
@@ -95,12 +95,51 @@ describe.each(PILOTS)("the real auto-merge workflow of %s", (pilot) => {
     const after = text.split("\n");
     expect(after).toHaveLength(before.length);
     const differing = after.flatMap((line, i) => (line === before[i] ? [] : [[before[i], line]]));
-    expect(differing).toHaveLength(1);
+    expect(differing).toHaveLength(2);
     expect(differing[0]?.[1]).toContain(
+      "# check is path-filtered and cannot be a required check, so",
+    );
+    expect(differing[1]?.[1]).toContain(
       "!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')",
     );
+    expect(text).not.toContain("gated by a repository variable");
     expect(hasSiteExclusion(text, "docs-site")).toBe(true);
     expect(patchAutoMerge(text, "docs-site").changed).toBe(false);
+  });
+});
+
+describe("the starter's reason for leaving the site out of auto-merge", () => {
+  const bun =
+    "if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/bun/docs-site') }}";
+  const reason = (gap: string): string =>
+    `# Reviewed by a person: the Docs${gap}workflow that builds the site is gated by a repository variable and is not a required check, so\n    # nothing else would stand in the way.\n    ${bun}`;
+
+  test("is replaced on one line and across a line break", () => {
+    for (const gap of [" ", "\n    # "]) {
+      const { text } = patchAutoMerge(workflow(reason(gap)), "docs-site");
+      expect(text, JSON.stringify(gap)).toContain(
+        `the Docs${gap}check is path-filtered and cannot be a required check, so\n    # nothing else would stand in the way.`,
+      );
+      expect(text).not.toContain("gated by a repository variable");
+    }
+  });
+
+  test("keeps CRLF line ends", () => {
+    const { text } = patchAutoMerge(
+      workflow(reason("\n    # ")).replace(/\n/g, "\r\n"),
+      "docs-site",
+    );
+    expect(text.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(text).toContain("the Docs\r\n    # check is path-filtered");
+  });
+
+  test("only a workflow whose exclusion is converted gets it, and only that sentence changes", () => {
+    const other = workflow(`# gated by a repository variable\n    ${bun}`);
+    expect(patchAutoMerge(other, "docs-site").text).toBe(
+      other.replace("dependabot/bun/docs-site", "dependabot/npm_and_yarn/docs-site"),
+    );
+    const done = workflow(reason(" ").replace("dependabot/bun/", "dependabot/npm_and_yarn/"));
+    expect(patchAutoMerge(done, "docs-site")).toEqual({ text: done, changed: false });
   });
 });
 

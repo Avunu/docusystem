@@ -6,6 +6,7 @@
 import { join, relative, sep } from "node:path";
 import { findRepoRoot, findSiteDir } from "../lib/config.js";
 import {
+  cooldownAdvice,
   DependabotShapeError,
   dependabotFile,
   ensureDependabotEntries,
@@ -103,6 +104,9 @@ export async function runUpgrade(ctx: CommandContext, deps: UpgradeDeps): Promis
       try {
         const next = ensureDependabotEntries(text, { site: siteRel, actions: true });
         changes.push(planChange(dependabot, text, next.text, next.changes.join("; ") || undefined));
+        for (const advice of cooldownAdvice(next.text, { site: siteRel, actions: true })) {
+          byHand.push(`${dependabot}: ${advice}`);
+        }
       } catch (error) {
         if (!(error instanceof DependabotShapeError)) throw error;
         byHand.push(

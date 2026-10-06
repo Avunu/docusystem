@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   DependabotShapeError,
   actionsSnippet,
+  cooldownAdvice,
   dependabotFile,
   ensureDependabotEntries,
   npmSnippet,
@@ -63,16 +64,36 @@ describe("a file that does not exist", () => {
 describe.each(PILOTS)("the real dependabot.yml of %s", (pilot) => {
   const real = readFixture("pilots", pilot, ".github", "dependabot.yml");
 
-  test("has a bun entry for the site: it becomes npm in place, a one-line diff, and nothing else is added", () => {
+  test("has a bun entry for the site: it becomes npm in place, keeps its cooldown but excludes the package, and nothing else is added", () => {
     const { text, changes } = ensureDependabotEntries(real, ADD);
-    expect(changes).toEqual(["converted the bun entry for /docs-site to npm"]);
+    expect(changes.slice(0, 2)).toEqual([
+      "converted the bun entry for /docs-site to npm",
+      "excluded @avunu/docusystem from the cooldown of the npm entry for /docs-site",
+    ]);
     const before = real.split("\n");
     const after = text.split("\n");
-    expect(after).toHaveLength(before.length);
-    const differing = after.flatMap((line, i) => (line === before[i] ? [] : [[before[i], line]]));
-    expect(differing).toEqual([["  - package-ecosystem: bun", "  - package-ecosystem: npm"]]);
+    // two lines more (the exclude list); everything else is the same line, or the one that said bun
+    expect(after).toHaveLength(before.length + 2);
+    const at = after.indexOf("      exclude:");
+    expect(after.slice(at, at + 2)).toEqual(["      exclude:", '        - "@avunu/docusystem"']);
+    const rest = [...after.slice(0, at), ...after.slice(at + 2)];
+    const differing = rest.flatMap((line, i) => (line === before[i] ? [] : [[before[i], line]]));
+    for (const [was, now] of differing) {
+      expect(
+        was === "  - package-ecosystem: bun"
+          ? now === "  - package-ecosystem: npm"
+          : was?.replace("Bun", "npm") === now,
+        `${was} -> ${now}`,
+      ).toBe(true);
+    }
     expect(summary(text)).toContain("npm /docs-site");
     expect(summary(text)).not.toContain("bun /docs-site");
+    const converted = readDependabotEntries(text).entries.find(
+      (e) => e.ecosystem === "npm" && e.directories.includes("/docs-site"),
+    );
+    expect(converted?.cooldown).toEqual({ present: true, excludes: ["@avunu/docusystem"] });
+    // nothing in the converted file still says that the site is a Bun site
+    expect(text.replaceAll("bun.lock", "")).not.toMatch(/\bBun\b/);
   });
 
   test("before the site was added (updates: is the last key): the entry is appended after the text, untouched", () => {
@@ -290,6 +311,277 @@ describe("what counts as an entry for the site (the judges' false OKs)", () => {
     expect(text).toBe(
       'version: 2\nupdates:\n  - package-ecosystem: "npm"\n    directory: "/docs-site"\n',
     );
+  });
+});
+
+describe("a bun entry with a cooldown: the package is excluded from it", () => {
+  const NPM = { site: "docs-site", actions: false };
+  const EXCLUDE = '"@avunu/docusystem"';
+  const excludes = (text: string): string[] =>
+    readDependabotEntries(text).entries.find((e) => e.directories.includes("/docs-site"))?.cooldown
+      .excludes ?? [];
+  const bunEntry = (cooldown: string[], rest: string[] = []): string =>
+    [
+      "version: 2",
+      "updates:",
+      "  - package-ecosystem: bun",
+      "    directory: /docs-site",
+      "    schedule:",
+      "      interval: weekly",
+      ...cooldown,
+      ...rest,
+      "",
+    ].join("\n");
+
+  test("a block cooldown gets an exclude list after its last line, before the next key and its comments", () => {
+    const original = bunEntry(
+      ["    cooldown:", "      default-days: 7 # a week"],
+      [
+        "",
+        "    # why grouped",
+        "    groups:",
+        "      docs-site-packages:",
+        '        patterns: ["*"]',
+      ],
+    );
+    const { text, changes } = ensureDependabotEntries(original, NPM);
+    expect(text).toBe(
+      original
+        .replace("package-ecosystem: bun", "package-ecosystem: npm")
+        .replace(
+          "default-days: 7 # a week\n",
+          `default-days: 7 # a week\n      exclude:\n        - ${EXCLUDE}\n`,
+        ),
+    );
+    expect(changes).toEqual([
+      "converted the bun entry for /docs-site to npm",
+      "excluded @avunu/docusystem from the cooldown of the npm entry for /docs-site",
+    ]);
+    expect(excludes(text)).toEqual(["@avunu/docusystem"]);
+    expect(cooldownAdvice(text, NPM)).toEqual([]);
+  });
+
+  test("an exclude list of other packages gets the package as one more item, in the list's own indentation", () => {
+    const original = bunEntry(
+      [
+        "    cooldown:",
+        "      default-days: 7",
+        "      exclude:",
+        "      - left-pad # old",
+        "      - other",
+      ],
+      ["    commit-message:", "      prefix: chore"],
+    );
+    const { text } = ensureDependabotEntries(original, NPM);
+    expect(text).toContain(`      - other\n      - ${EXCLUDE}\n    commit-message:`);
+    expect(excludes(text)).toEqual(["left-pad", "other", "@avunu/docusystem"]);
+  });
+
+  test("a cooldown that excludes the package already is left as it is", () => {
+    const original = bunEntry([
+      "    cooldown:",
+      "      default-days: 7",
+      "      exclude:",
+      `        - ${EXCLUDE}`,
+    ]);
+    const { text, changes } = ensureDependabotEntries(original, NPM);
+    expect(text).toBe(original.replace("package-ecosystem: bun", "package-ecosystem: npm"));
+    expect(changes).toEqual(["converted the bun entry for /docs-site to npm"]);
+  });
+
+  test("an entry without a cooldown gets none", () => {
+    const original = bunEntry([]);
+    const { text, changes } = ensureDependabotEntries(original, NPM);
+    expect(text).toBe(original.replace("package-ecosystem: bun", "package-ecosystem: npm"));
+    expect(changes).toEqual(["converted the bun entry for /docs-site to npm"]);
+  });
+
+  test("the cooldown may come before the ecosystem, and the entry may be followed by others", () => {
+    const original = [
+      "version: 2",
+      "updates:",
+      "  - cooldown:",
+      "      default-days: 3",
+      "    package-ecosystem: bun",
+      "    directory: /docs-site",
+      "  - package-ecosystem: pip",
+      "    directory: /",
+      "",
+    ].join("\n");
+    const { text } = ensureDependabotEntries(original, NPM);
+    expect(text).toBe(
+      [
+        "version: 2",
+        "updates:",
+        "  - cooldown:",
+        "      default-days: 3",
+        "      exclude:",
+        `        - ${EXCLUDE}`,
+        "    package-ecosystem: npm",
+        "    directory: /docs-site",
+        "  - package-ecosystem: pip",
+        "    directory: /",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("with an entry to add after it (the github-actions one), both edits land where they belong", () => {
+    const original = bunEntry(["    cooldown:", "      default-days: 7"]);
+    const { text, changes } = ensureDependabotEntries(original, ADD);
+    expect(summary(text)).toEqual(["npm /docs-site", "github-actions /"]);
+    expect(excludes(text)).toEqual(["@avunu/docusystem"]);
+    expect(text).toContain(
+      `        - ${EXCLUDE}\n\n  # The pinned commit of the shared documentation workflows`,
+    );
+    expect(changes).toContain("added the github-actions entry for /");
+    expect(readDependabotEntries(text).error).toBeUndefined();
+  });
+
+  test("a file without a final newline and CRLF line ends keep their style", () => {
+    const original = bunEntry(["    cooldown:", "      default-days: 7"]).trimEnd();
+    const bare = ensureDependabotEntries(original, NPM).text;
+    expect(excludes(bare)).toEqual(["@avunu/docusystem"]);
+    expect(bare.startsWith(original.replace("bun", "npm"))).toBe(true);
+    const crlf = ensureDependabotEntries(original.replace(/\n/g, "\r\n"), NPM).text;
+    expect(crlf.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(crlf).toContain(`      exclude:\r\n        - ${EXCLUDE}`);
+    expect(excludes(crlf)).toEqual(["@avunu/docusystem"]);
+  });
+
+  test("a flow list of entries (the Document API path) gets it too", () => {
+    const original =
+      "version: 2\nupdates: [{package-ecosystem: bun, directory: /docs-site, cooldown: {default-days: 7}}]\n";
+    const { text, changes } = ensureDependabotEntries(original, NPM);
+    expect(summary(text)).toEqual(["npm /docs-site"]);
+    expect(excludes(text)).toEqual(["@avunu/docusystem"]);
+    expect(changes).toContain(
+      "excluded @avunu/docusystem from the cooldown of the npm entry for /docs-site",
+    );
+  });
+
+  test.each([
+    ["a flow cooldown", "    cooldown: {default-days: 7}"],
+    ["a flow exclude list", "    cooldown:\n      default-days: 7\n      exclude: [left-pad]"],
+    ["an empty exclude", "    cooldown:\n      default-days: 7\n      exclude:"],
+  ])(
+    "%s cannot be extended in place: it is converted, the cooldown is untouched and the advice says what to add",
+    (_name, cooldown) => {
+      const original = bunEntry([cooldown]);
+      const { text, changes } = ensureDependabotEntries(original, NPM);
+      expect(text).toBe(original.replace("package-ecosystem: bun", "package-ecosystem: npm"));
+      expect(changes).toEqual(["converted the bun entry for /docs-site to npm"]);
+      const [advice] = cooldownAdvice(text, NPM);
+      expect(advice).toContain(
+        'the npm entry for /docs-site has a cooldown that does not exclude "@avunu/docusystem"',
+      );
+      expect(advice).toContain(`exclude:\n  - ${EXCLUDE}`);
+    },
+  );
+
+  test("running it again changes nothing", () => {
+    const once = ensureDependabotEntries(
+      bunEntry(["    cooldown:", "      default-days: 7"]),
+      ADD,
+    ).text;
+    expect(ensureDependabotEntries(once, ADD)).toEqual({ text: once, changes: [] });
+  });
+});
+
+describe("the comments of a converted entry", () => {
+  const NPM = { site: "docs-site", actions: false };
+  const convert = (lines: string[]): string =>
+    ensureDependabotEntries(
+      [
+        "version: 2",
+        "updates:",
+        ...lines,
+        "  - package-ecosystem: bun",
+        "    directory: /docs-site",
+        "",
+      ].join("\n"),
+      NPM,
+    ).text;
+
+  test("a comment block about the site that names Bun says npm now, here or on the entry before", () => {
+    const text = convert([
+      "  # The documentation site (docs-site/): the pinned actions and the site's own Bun",
+      "  # packages; Bun is its package manager.",
+      "  - package-ecosystem: github-actions",
+      "    directory: /",
+    ]);
+    expect(text).toContain("the site's own npm\n  # packages; npm is its package manager.");
+  });
+
+  test("a comment that is not about the site, and every other mention of bun, stays", () => {
+    const text = convert([
+      "  # The mobile app is built with Bun; its entry is below.",
+      "  - package-ecosystem: github-actions",
+      "    directory: /",
+      "",
+      "  # docs-site/ had a bun.lock once, which Bun wrote.",
+    ]);
+    expect(text).toContain("# The mobile app is built with Bun;");
+    expect(text).toContain("had a bun.lock once, which npm wrote.");
+  });
+
+  test("an entry that is not converted keeps its comments", () => {
+    const original =
+      "version: 2\nupdates:\n  # docs-site/ uses Bun for something else\n  - package-ecosystem: bun\n    directories: ['/docs-site', '/other']\n";
+    expect(ensureDependabotEntries(original, NPM).text.startsWith(original)).toBe(true);
+  });
+});
+
+describe("cooldownAdvice", () => {
+  const file = (entries: string[]): string => `version: 2\nupdates:\n${entries.join("")}`;
+  const npmEntry = (cooldown: string): string =>
+    `  - package-ecosystem: npm\n    directory: /docs-site\n${cooldown}`;
+  const actionsEntry = (cooldown: string): string =>
+    `  - package-ecosystem: github-actions\n    directory: /\n${cooldown}`;
+  const COOLDOWN = "    cooldown:\n      default-days: 7\n";
+  const EXCLUDING = (name: string): string => `${COOLDOWN}      exclude:\n        - "${name}"\n`;
+
+  test("an npm entry for the site whose cooldown holds the package back", () => {
+    const [advice, ...more] = cooldownAdvice(file([npmEntry(COOLDOWN)]), ADD);
+    expect(more).toEqual([]);
+    expect(advice).toBe(
+      'the npm entry for /docs-site has a cooldown that does not exclude "@avunu/docusystem", so a release of the package would wait for it; add this under its cooldown:\nexclude:\n  - "@avunu/docusystem"',
+    );
+  });
+
+  test("a github-actions entry whose cooldown holds the shared workflows back", () => {
+    const [advice, ...more] = cooldownAdvice(file([actionsEntry(COOLDOWN)]), ADD);
+    expect(more).toEqual([]);
+    expect(advice).toBe(
+      "the github-actions entry has a cooldown that does not exclude Avunu/docusystem, so a release of the shared workflows would wait for it; add this under its cooldown:\nexclude:\n  - Avunu/docusystem",
+    );
+  });
+
+  test("the github-actions entry is not judged when the workflows are not set up (no actions)", () => {
+    expect(
+      cooldownAdvice(file([actionsEntry(COOLDOWN)]), { site: "docs-site", actions: false }),
+    ).toEqual([]);
+  });
+
+  test("nothing to say about excluded packages, entries without a cooldown, or other folders", () => {
+    expect(
+      cooldownAdvice(
+        file([
+          npmEntry(EXCLUDING("@avunu/docusystem")),
+          actionsEntry(EXCLUDING("Avunu/docusystem")),
+          "  - package-ecosystem: npm\n    directory: /\n" + COOLDOWN,
+          "  - package-ecosystem: github-actions\n    directory: /sub\n" + COOLDOWN,
+        ]),
+        ADD,
+      ),
+    ).toEqual([]);
+    expect(cooldownAdvice(file([npmEntry(""), actionsEntry("")]), ADD)).toEqual([]);
+    expect(cooldownAdvice("", ADD)).toEqual([]);
+    expect(cooldownAdvice("not: [yaml", ADD)).toEqual([]);
+  });
+
+  test("the entries that init writes need no advice", () => {
+    expect(cooldownAdvice(ensureDependabotEntries(null, ADD).text, ADD)).toEqual([]);
   });
 });
 

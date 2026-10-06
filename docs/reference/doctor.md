@@ -54,7 +54,8 @@ All warnings:
 - There is no npm entry for the site folder.
 - There is no `github-actions` entry.
 - An entry is for the wrong ecosystem for the lockfile.
-- A `github-actions` entry has a cooldown that does not exclude `Avunu/docusystem`.
+- The npm entry for the site folder has a cooldown that does not exclude `@avunu/docusystem`: a release of the package would wait for it. `init` adds the exclusion when it converts a `bun` entry, and prints the lines to add for an npm entry that was already there.
+- A `github-actions` entry has a cooldown that does not exclude `Avunu/docusystem`: a release of the shared workflows would wait for it.
 
 The file is parsed, not searched: an `npm /` entry followed by a `bun /docs-site` entry is not a match for an npm entry for the site folder.
 

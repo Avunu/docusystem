@@ -870,7 +870,7 @@ describe("the rest of the repository", () => {
 });
 
 describe.each(PILOTS)("init, then doctor, in a copy of %s's .github", (pilot) => {
-  test("no errors; the only warnings are cooldowns that do not exclude the package or the workflow repository", async () => {
+  test("no errors; the only warning is a github-actions cooldown that init leaves to a person (the package is never held back)", async () => {
     const root = makeRepo({
       origin: `https://github.com/Avunu/${pilot}`,
       files: {
@@ -890,8 +890,13 @@ describe.each(PILOTS)("init, then doctor, in a copy of %s's .github", (pilot) =>
     expect(done.code).toBe(0);
     writeFileSync(join(root, "docs-site/package-lock.json"), "{}\n");
     expect(at(root, "error")).toEqual([]);
-    for (const warning of at(root, "warning"))
-      expect(warning).toMatch(/cooldown that does not exclude/);
+    const found = at(root, "warning");
+    expect(found.filter((warning) => warning.includes("@avunu/docusystem"))).toEqual([]);
+    expect(found).toHaveLength(pilot === "erpnext_taskview" ? 1 : 0);
+    for (const warning of found)
+      expect(warning).toContain(
+        "the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
+      );
   });
 });
 
