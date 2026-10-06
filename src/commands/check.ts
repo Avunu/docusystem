@@ -18,6 +18,7 @@ import {
 } from "../lib/ci.js";
 import { contrastFailures, highlightOf } from "../lib/contrast.js";
 import { checkLinks, formatIssues } from "../lib/links.js";
+import { hasJxFragment } from "../lib/overrides.js";
 import { runPipeline } from "../lib/pipeline.js";
 import type { Paths, Problem } from "../lib/types.js";
 import { EXIT, type CommandContext } from "./types.js";
@@ -150,7 +151,11 @@ export async function run(ctx: CommandContext): Promise<number> {
       overrides:
         build.assembly === undefined
           ? undefined
-          : { shadowed: build.assembly.shadowed, added: build.assembly.added },
+          : {
+              shadowed: build.assembly.shadowed,
+              added: build.assembly.added,
+              jx: hasJxFragment(build.config),
+            },
       problems,
     });
     appendStepSummary(ctx.env, markdown);

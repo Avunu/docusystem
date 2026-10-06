@@ -124,6 +124,17 @@ describe("docusystem info", () => {
     expect(stdout).not.toContain("(missing)");
   });
 
+  test("the jx setting is an override: 'none' is not claimed, and it follows the files of overrides/", async () => {
+    const jx = { $head: [{ tagName: "meta", attributes: { name: "author", content: "Avunu" } }] };
+    const jxLine = 'the "jx" setting of docusystem.config.json (merged into project.json)';
+    fakes.readConfig.mockReturnValue({ ...world.config, jx });
+    expect((await info()).stdout).toContain(`overrides:  ${jxLine}\n`);
+    writeTree(world.siteDir, { "overrides/pages/about.json": "{}" });
+    expect((await info()).stdout).toContain(`overrides:  pages/about.json, ${jxLine}\n`);
+    fakes.readConfig.mockReturnValue({ ...world.config, jx: {} });
+    expect((await info()).stdout).toContain("overrides:  pages/about.json\n");
+  });
+
   test("--json prints the same facts as one JSON object", async () => {
     const { code, stdout } = await info(["--json"]);
     expect(code).toBe(0);

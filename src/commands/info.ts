@@ -12,6 +12,7 @@ import { runtimeName } from "../lib/ci.js";
 import { ConfigError, findSiteDir, pathsFor, readConfig, resolveBranch } from "../lib/config.js";
 import { walkFiles } from "../lib/fsutil.js";
 import { jxCli, jxVersions } from "../lib/jx.js";
+import { hasJxFragment, JX_FRAGMENT } from "../lib/overrides.js";
 import { name, packageRoot, version, WORKFLOW_CONTRACT } from "../lib/package-info.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { shellCommand } from "../lib/strict.js";
@@ -134,6 +135,7 @@ function render(info: Info): string[] {
   }
   const { paths } = info;
   if (paths !== null) {
+    const overrides = [...info.overrides, ...(hasJxFragment(info.config) ? [JX_FRAGMENT] : [])];
     const here = (path: string): string => (existsSync(path) ? "" : "  (missing)");
     out.push(
       `${pad("repository")}${paths.repoRoot}`,
@@ -142,9 +144,7 @@ function render(info: Info): string[] {
       `${pad("jx root")}${paths.root}${existsSync(paths.root) ? "" : "  (not assembled yet: run docusystem build)"}`,
       `${pad("published")}${paths.dist}${here(paths.dist)}`,
       `${pad("overrides")}${
-        info.overrides.length === 0
-          ? "none (every file comes from the package)"
-          : info.overrides.join(", ")
+        overrides.length === 0 ? "none (every file comes from the package)" : overrides.join(", ")
       }`,
       `${pad("public")}${info.publicFiles.length === 0 ? "none" : info.publicFiles.join(", ")}`,
     );

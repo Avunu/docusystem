@@ -92,7 +92,12 @@ The config's `jx` object is merged into the generated Jx `project.json` after th
 ```json
 {
   "jx": {
-    "$head": [{ "tagName": "meta", "attributes": { "name": "robots", "content": "noindex" } }]
+    "$head": [
+      {
+        "tagName": "meta",
+        "attributes": { "name": "google-site-verification", "content": "TOKEN-FROM-SEARCH-CONSOLE" }
+      }
+    ]
   }
 }
 ```
@@ -104,6 +109,10 @@ The merge rules:
 - The array at `$head` is appended to the package's, package entries first.
 - Every other array replaces the package's, and the build prints `overrides: jx.<path> replaces N entries of the package's list`. That is a warning, and it is listed in the manifest.
 - The fragment cannot override `name`, `url` or `content.docs.source` without a warning that says so.
+
+The fragment's `$head` entries are the site-wide level of each page's `<head>`, and the layout and the page are merged over them: an entry whose key matches a tag the layout sets (a `meta` with the same `name` or `property`, such as `description`, `robots` or an `og:` or `twitter:` tag) builds and passes `check`, but the layout's tag is the one in the page. Add tags the package does not set, such as the verification tag above or an extra `link`. The [configuration reference](../reference/configuration.md#the-jx-fragment) lists the keys the layout takes.
+
+Every build lists the fragment with the overrides (the `overrides:` lines and the closing `build: overrides:` summary), as do `docusystem info` and the CI job summary, and `docusystem doctor` warns about it.
 
 ## Not possible on purpose
 

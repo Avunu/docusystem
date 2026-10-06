@@ -17,7 +17,7 @@ import {
 import { ConfigError, findRepoRoot, findSiteDir, pathsFor, readConfig } from "../lib/config.js";
 import { dependabotFile, readDependabotEntries, type DependabotEntry } from "../lib/dependabot.js";
 import { isInside } from "../lib/fsutil.js";
-import { overrideFindings } from "../lib/overrides.js";
+import { hasJxFragment, JX_FRAGMENT, overrideFindings } from "../lib/overrides.js";
 import { major, REPOSITORY, version } from "../lib/package-info.js";
 import { COMMIT } from "../lib/pin.js";
 import { checkSlug } from "../lib/preflight.js";
@@ -420,9 +420,18 @@ function checkAutoMerge(repoRoot: string, siteRel: string, add: Add): void {
 
 // ---- overrides and the rest of the repository ----
 
-function checkOverrides(site: string, add: Add): void {
+function checkOverrides(site: string, config: DocsConfig | null, add: Add): void {
+  // The `jx` setting changes the package's project.json and is outside semver: nothing tells whether a
+  // package update still merges with it, so it is a warning, like an override that was not ejected.
+  const jx = hasJxFragment(config);
+  if (jx) {
+    add(
+      "warning",
+      `overrides: ${JX_FRAGMENT} is outside semver and does not follow package updates: check the pages it changes after each upgrade`,
+    );
+  }
   if (!existsSync(join(site, "overrides"))) {
-    add("ok", "overrides: none; the site follows the package");
+    if (!jx) add("ok", "overrides: none; the site follows the package");
     return;
   }
   let findings: Finding[];
@@ -514,7 +523,7 @@ export function diagnose(siteDir: string): Finding[] {
   const ecosystem = checkLockfile(site, siteRel, add);
   checkDependabot(repoRoot, siteRel, ecosystem, add);
   checkAutoMerge(repoRoot, siteRel, add);
-  checkOverrides(site, add);
+  checkOverrides(site, config, add);
   checkRepo(site, siteRel, repoRoot, add);
   return out;
 }

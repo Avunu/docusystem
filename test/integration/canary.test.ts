@@ -54,6 +54,41 @@ const occurrences = (text: string, needle: string): number => text.split(needle)
 
 const cleanRepo = (): Repo => repoFrom("canary/clean");
 
+interface HeadEntry {
+  tagName: string;
+  attributes: Record<string, string>;
+}
+
+/** The first JSON block below the heading of a page of the documentation: the example the page shows. */
+function exampleBelow(page: string, heading: string): { jx: { $head: HeadEntry[] } } {
+  const lines = readFileSync(join(REPO_ROOT, ...page.split("/")), "utf8").split("\n");
+  const start = lines.indexOf(heading);
+  expect(start, `${page} has the heading ${heading}`).toBeGreaterThanOrEqual(0);
+  const open = lines.indexOf("```json", start);
+  const close = lines.indexOf("```", open + 1);
+  expect(open, `${page} shows a JSON example below ${heading}`).toBeGreaterThan(start);
+  return JSON.parse(lines.slice(open + 1, close).join("\n")) as { jx: { $head: HeadEntry[] } };
+}
+
+/** The `<meta>` and `<link>` tags of a built page's head, as `{ tagName, ...attributes }`. */
+function headTags(html: string): Array<Record<string, string>> {
+  const head = /<head>([\s\S]*?)<\/head>/.exec(html)?.[1] ?? "";
+  return [...head.matchAll(/<(meta|link)\b([^>]*)>/g)].map((tag) => {
+    const attributes = [...tag[2]!.matchAll(/([\w:-]+)="([^"]*)"/g)].map((a) => [a[1]!, a[2]!]);
+    return Object.fromEntries([["tagName", tag[1]!], ...attributes]) as Record<string, string>;
+  });
+}
+
+/** Builds `repo` (strict, as CI does) with `jx` set in its configuration. */
+async function buildWithJx(repo: Repo, jx: unknown) {
+  const file = join(repo.siteDir, "docusystem.config.json");
+  const config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+  writeFileSync(file, `${JSON.stringify({ ...config, jx }, null, 2)}\n`);
+  const built = await cli(repo, ["build"]);
+  expect(built.code, `${built.stdout}\n${built.stderr}`).toBe(0);
+  return built.stdout;
+}
+
 describe.skipIf(waiting.length > 0)(
   waiting.length === 0
     ? "the canary through the real modules"
@@ -136,6 +171,51 @@ describe.skipIf(waiting.length > 0)(
         const first = listTree(repo.paths.dist);
         expect((await cli(repo, ["build"])).code).toBe(0);
         expect(listTree(repo.paths.dist)).toEqual(first);
+      });
+    });
+
+    describe("the jx fragment", () => {
+      const PAGES = ["index.html", "docs/index.html", "docs/guide/install/index.html"];
+      const read = (repo: Repo, page: string): string =>
+        readFileSync(join(repo.paths.dist, ...page.split("/")), "utf8");
+
+      test.each([
+        ["docs/reference/configuration.md", "## The `jx` fragment"],
+        ["docs/guide/overrides.md", "## Rung 4: the `jx` fragment"],
+      ])("the example of %s takes effect on every page", async (page, heading) => {
+        const { jx } = exampleBelow(page, heading);
+        expect(jx.$head.length).toBeGreaterThan(0);
+        const repo = cleanRepo();
+        await buildWithJx(repo, jx);
+        for (const file of PAGES) {
+          const tags = headTags(read(repo, file));
+          for (const entry of jx.$head) {
+            expect(tags, `${file} has ${JSON.stringify(entry)}`).toContainEqual({
+              tagName: entry.tagName,
+              ...entry.attributes,
+            });
+          }
+        }
+      });
+
+      test("a tag the layout also sets is not replaced: the layout's robots tag is the one in the page", async () => {
+        const repo = cleanRepo();
+        const stdout = await buildWithJx(repo, {
+          $head: [{ tagName: "meta", attributes: { name: "robots", content: "noindex" } }],
+        });
+        for (const file of PAGES) {
+          const robots = headTags(read(repo, file)).filter((tag) => tag.name === "robots");
+          expect(robots, file).toEqual([
+            { tagName: "meta", name: "robots", content: "index, follow" },
+          ]);
+        }
+        // only the 404 page keeps itself out of search engines
+        expect(read(repo, "404.html")).toContain('content="noindex, nofollow"');
+        // ...and the fragment was applied, so the build does not say that nothing was changed
+        expect(stdout).toContain(
+          'build: overrides: the "jx" setting of docusystem.config.json (merged into project.json)',
+        );
+        expect(stdout).not.toContain("none (every file comes from the package)");
       });
     });
 

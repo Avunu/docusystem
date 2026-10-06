@@ -26,6 +26,20 @@ import type { Finding } from "./types.js";
 /** The folders of `overrides/` (and of the package's `site/`) that hold Jx files. */
 export const OVERRIDE_DIRS = ["components", "layouts", "pages"] as const;
 
+/**
+ * How the `jx` setting is named wherever the overrides of a site are listed (the build summary,
+ * `info`, the CI summary, `doctor`): it changes the package's project.json, so a site that sets it
+ * does not simply follow the package.
+ */
+export const JX_FRAGMENT = 'the "jx" setting of docusystem.config.json (merged into project.json)';
+
+/** Whether the configuration has a `jx` setting that changes anything (an empty object does not). */
+export function hasJxFragment(
+  config: { jx?: Record<string, unknown> } | null | undefined,
+): boolean {
+  return config?.jx !== undefined && Object.keys(config.jx).length > 0;
+}
+
 /** One entry of `overrides/.ejected.json`. */
 export interface EjectRecord {
   from: string;
