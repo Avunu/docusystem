@@ -199,6 +199,20 @@ describe("runPostbuild", () => {
     ).toEqual([`${SITE}/docs/a/b/`, `${SITE}/docs/a/`, `${SITE}/docs/`, `${SITE}/`]);
   });
 
+  test("the marker that staging wrote for a `${` is text again in the page body and stays in attribute values", () => {
+    const marker = `$${String.fromCodePoint(0x200b)}{`;
+    const dist = writeTree(tempDir(), {
+      "index.html": page("", "/"),
+      "docs/a/index.html": page(
+        `<p>Set <code>${marker}HOME}</code> and <a href="https://e.org/${marker}x}">link</a>.</p>`,
+      ),
+    });
+    runPostbuild(dist, config(), navOf({}), noRepo());
+    const body = readFileSync(join(dist, "docs/a/index.html"), "utf8");
+    expect(body).toContain("<code>&#36;{HOME}</code>");
+    expect(body).toContain(`href="https://e.org/${marker}x}"`);
+  });
+
   test("an existing 404.html is kept as it is and counts as published", () => {
     const dist = writeTree(tempDir(), {
       "index.html": page("", "/"),

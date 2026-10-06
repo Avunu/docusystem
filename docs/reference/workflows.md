@@ -61,7 +61,7 @@ No workflow that a pull request can trigger asks for `pages: write` or `id-token
 
 ## Trust model
 
-A pull request can change `docs/` and `docs-site/`: the config, the lockfile and any override. An override's component JSON can carry compiler-time function bodies that run at build time, so a pull request can therefore run code in the build job. That job has a read-only token and no secrets.
+A pull request can change `docs/` and `docs-site/`: the config, the lockfile and any override. An override's component JSON can carry compiler-time function bodies that run at build time, so a pull request that changes `docs-site/` can run code in the build job. That job has a read-only token and no secrets. A pull request that changes only `docs/` cannot: a page is data.
 
 A pull request cannot:
 
@@ -69,7 +69,7 @@ A pull request cannot:
 - reach the deploy job, which is in a file that no pull request triggers;
 - publish anything.
 
-`${...}` in Markdown is inert under the pinned parser, and the escaping of page titles and headings is kept.
+A page is data because nothing a page says reaches Jx as a template. Jx evaluates every string that holds `${` as JavaScript, and its parser makes inert only the text of a page, not what becomes an attribute (a link address, a URL, a raw HTML attribute, a directive, the language of a fence) and not the strings that the layouts hand to components. So the build writes every `${` of a page inert itself, whatever the Markdown around it means: staging does it for the pages, the sidebar data is cleaned the same way, the configuration's text keys are refused when they hold one, and the catalog contract refuses one. The escaping of page titles and headings is kept. The seeded random corpus of `test/integration/jx-expressions-fuzz.test.ts` builds hostile pages with the real Jx and fails if any expression runs.
 
 ## If a called deploy job is rejected
 

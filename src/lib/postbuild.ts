@@ -1,6 +1,8 @@
 // Step 11 of the pipeline (section 5.1): fixes up `<root>/dist` after `jx build`, in place.
 //   - whitespace: the emitter's separators between inline nodes and between highlighted code tokens
 //     (tidy.ts).
+//   - `${`: staging writes every one with a zero-width space inside, so that Jx cannot evaluate it
+//     (inert.ts); in the text of a page it is written back as Jx writes text that holds `${`.
 //   - <title>: Jx writes the title text as it is, so a `<` in it ("Array<string>") is written raw;
 //     it is escaped. (The package's own pages hand Jx the title already escaped, because the text
 //     of a title can hold `</title>` and then cannot be told from the end of the element; this is
@@ -25,6 +27,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { isInside, removeInside } from "./fsutil.js";
+import { restoreText } from "./inert.js";
 import { distFiles, fileFor, htmlPages, routeOfFile } from "./links.js";
 import { publishNotFoundPage, tidyPage } from "./tidy.js";
 import type { DocsConfig, NavData, PostbuildSummary, RepoLink } from "./types.js";
@@ -301,7 +304,7 @@ export function runPostbuild(
   for (const file of files) {
     const route = routeOfFile(dist, file);
     const before = readFileSync(file, "utf8");
-    let after = escapeTitle(tidyPage(before));
+    let after = restoreText(escapeTitle(tidyPage(before)));
     const plain = unhighlightedLanguages(after);
     if (plain.length > 0) {
       warnings.push(

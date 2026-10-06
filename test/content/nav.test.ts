@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readDocs } from "../../src/lib/docs.js";
 import { buildNav, writeNav } from "../../src/lib/nav.js";
 import { writeTree } from "../support/index.js";
+import { INERT } from "../../src/lib/inert.js";
 import { makeTree, pathsIn } from "./helpers.js";
 
 const nav = (files: Record<string, string>, name?: string) =>
@@ -262,4 +263,20 @@ test("a home page with broken frontmatter is still the home page", () => {
   expect(warnings).toEqual([
     "README.md: the frontmatter must be a YAML mapping (key: value lines); it is listed as if it had none",
   ]);
+});
+
+test("no string of the sidebar data holds `${`: a title, a label and a description come from files a pull request changes", () => {
+  const { nav: n } = nav({
+    "README.md": "# Home\n",
+    "a.md": '---\ntitle: "A ${1}"\nnav_title: "Nav ${2}"\ndescription: "Desc ${3}"\n---\n\nText\n',
+    "b.md": "# Heading with `${4}`\n",
+    "sec ${5}/README.md": "# Section\n",
+    "sec ${5}/page.md": "# Page\n",
+  });
+  const text = JSON.stringify(n);
+  expect(text).not.toContain("${");
+  expect(text).toContain(`Nav ${INERT}2}`);
+  expect(text).toContain(`Desc ${INERT}3}`);
+  expect(text).toContain(`${INERT}4}`);
+  expect(text).toContain(`sec ${INERT}5}`);
 });

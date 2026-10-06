@@ -23,6 +23,7 @@ import {
   type StageOptions,
 } from "../../src/lib/stage.js";
 import type { DocsConfig } from "../../src/lib/types.js";
+import { INERT } from "../../src/lib/inert.js";
 import { makeTree, pathsIn, symlinksWork } from "./helpers.js";
 
 /** A repository: docs/ with a few pages, and files elsewhere that the docs link to. */
@@ -636,4 +637,65 @@ test("stageSite takes the folders from the paths and the repository from the con
   const before = listTree(paths.stagedDocs);
   expect(stageSite(paths, config, "develop")).toMatchObject({ files: 2, written: 0, removed: 0 });
   expect(listTree(paths.stagedDocs)).toEqual(before);
+});
+
+test("stageMarkdown writes a `${` inert wherever Jx would evaluate it: a link, an autolink, a tag, a fence's language", () => {
+  const { options } = repo();
+  const source = [
+    "[a](https://example.com/${x})",
+    "",
+    "<https://example.com/${y}>",
+    "",
+    '<img src="${z}" alt="x">',
+    "",
+    "```${w}",
+    "code",
+    "```",
+    "",
+  ].join("\n");
+  const { text } = stageMarkdown(source, "README.md", options, new Map());
+  expect(text).not.toContain("${");
+  expect(text.split(INERT)).toHaveLength(5);
+});
+
+test("stageMarkdown writes it inert in code too, and in the frontmatter, in every spelling", () => {
+  const { options } = repo();
+  const source = [
+    "---",
+    'title: "T \\x24\\x7Bx}"',
+    "---",
+    "",
+    "Inline `${HOME}` and &#36;{HOME} and $\\{HOME}.",
+    "",
+    "```bash",
+    "echo ${HOME}",
+    "```",
+    "",
+  ].join("\n");
+  const { text } = stageMarkdown(source, "README.md", options, new Map());
+  expect(text).not.toContain("${");
+  expect(text).toContain(`title: "T ${INERT}x}"`);
+  expect(text).toContain(`Inline \`${INERT}HOME}\` and ${INERT}HOME} and ${INERT}HOME}.`);
+  expect(text).toContain(`echo ${INERT}HOME}`);
+});
+
+test("stageMarkdown leaves a page without `${` byte for byte, and staging twice changes nothing", () => {
+  const { options } = repo();
+  const plain = "# T\n\nPrice $5 and {braces} and `code`.\n";
+  expect(stageMarkdown(plain, "README.md", options, new Map()).text).toBe(plain);
+  const once = stageMarkdown("[a](https://example.com/${x}) `${y}`\n", "README.md", options).text;
+  expect(stageMarkdown(once, "README.md", options).text).toBe(once);
+});
+
+test("stageMarkdown still rewrites a link that sits next to a `${`: the two edits do not collide", () => {
+  const { options } = repo();
+  const { text, links } = stageMarkdown(
+    "[a](LICENSE) and [b](https://example.com/${x})\n",
+    "README.md",
+    options,
+    new Map(),
+  );
+  expect(links).toHaveLength(1);
+  expect(text).toContain("https://github.com/Avunu/app/blob/main/LICENSE");
+  expect(text).toContain(`https://example.com/${INERT}x}`);
 });

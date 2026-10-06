@@ -107,7 +107,7 @@ The conventions work on GitHub, in Obsidian and on the site at once.
 - Callouts are GitHub alerts: `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`.
 - Link to pages by file, relative to the current file, with `%20` for spaces. A link to a repository file that is not a page becomes a GitHub link. A link to a page that does not exist fails the CI build.
 - Give every code block a language. A language the highlighter does not know is shown as plain code, with a warning.
-- Reference-style links and footnotes are lint errors (the site would lose text), and so is a raw `<a href>` in a paragraph, around text or an image: Jx leaves an empty link, which fails every build, `--lenient` included. Inline HTML, task lists, table alignment and `${...}` in a link address are warnings.
+- Reference-style links and footnotes are lint errors (the site would lose text), and so is a raw `<a href>` in a paragraph, around text or an image: Jx leaves an empty link, which fails every build, `--lenient` included. Inline HTML, task lists and table alignment are warnings. A `${...}` in a link address, a URL, an HTML tag or a directive is an error: Jx would run it as JavaScript, so the build writes it inert and the link does not say what you wrote.
 
 `CI=true` makes every document problem fail the build, and `check` is always strict. While you work through a first pass, `docusystem build --lenient` reports them as warnings. See [Writing documentation](docs/guide/writing-docs.md).
 

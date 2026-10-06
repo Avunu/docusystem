@@ -17,7 +17,10 @@
 //            <details>): the wrapper is left empty and its content follows it
 //   warning  task-list checkboxes (- [ ]) are shown as plain list items
 //   warning  column alignment in tables is not applied
-//   warning  ${...} in a link destination is evaluated by Jx and drops the link
+//   error    ${...} in a link address, an autolink, a URL, raw HTML, a directive or the language of a
+//            code fence: Jx would run it when the site is built. Staging writes it inert (inert.ts),
+//            so the link is not what the page says; the error is for whoever wrote it, and for the
+//            reviewer
 //
 // Errors fail a strict build (CI); warnings are printed. Step 6 of the pipeline runs this over the
 // original docs/ folder (not the staged copy), so file names and line numbers are the author's.
@@ -28,7 +31,8 @@ import { join } from "node:path";
 import { isExcluded, isPublished } from "./docs.js";
 import { walkFiles } from "./fsutil.js";
 import { FrontmatterError, moveLeadingComment, parseFrontmatter } from "./frontmatter.js";
-import { destinations, lines, withoutCode } from "./markdown.js";
+import { expressionsIn } from "./inert.js";
+import { codeSpans, destinations, lines, withoutCode } from "./markdown.js";
 import type { LintIssue } from "./types.js";
 
 /**
@@ -75,6 +79,35 @@ const CONTAINERS = ["div", "details", "section", "center", "table", "blockquote"
 
 const count = (text: string, pattern: RegExp) => (text.match(pattern) ?? []).length;
 
+const TEMPLATE_MESSAGE =
+  "A ${...} in a link address, a URL, an HTML tag, a directive or the language of a code fence is run by Jx as JavaScript when the site is built. The build writes it with a hidden zero-width space instead, so the link or attribute does not say what you wrote. Write a link address with %24%7B...%7D, or put the text in a code span or a code block.";
+/** The opening fence of a code block, up to its info string. */
+const FENCE = /^\s*(?:`{3,}|~{3,})/;
+/** A line that starts raw HTML (a block of it, or a tag that begins one). */
+const RAW_START = /^ {0,3}</;
+const TAG = /<[A-Za-z/!?][^>]*>?/g;
+const URL_LITERAL = /(?:https?:\/\/|www\.)[^\s<]*/gi;
+const DIRECTIVE = /:[A-Za-z][\w-]*(?:\[[^\]]*\])?\{[^}]*\}?/g;
+
+/**
+ * Whether a line of prose holds an expression in a place that becomes an attribute: a link or image
+ * address, a tag, a URL, the braces of a directive; `raw` for a line that is raw HTML as a whole.
+ * Text in a code span does not count, except as part of a link address (a backtick may stand in one).
+ */
+function hasLiveExpression(text: string, raw: boolean): boolean {
+  const hits = expressionsIn(text);
+  if (hits.length === 0) return false;
+  if (raw) return true;
+  const spans = codeSpans(text);
+  const within = (ranges: Array<[number, number]>, at: number) =>
+    ranges.some(([from, to]) => at >= from && at < to);
+  const found = (pattern: RegExp): Array<[number, number]> =>
+    [...text.matchAll(pattern)].map((m) => [m.index, m.index + m[0].length]);
+  const addresses = destinations(text).map((d): [number, number] => [d.start, d.end]);
+  const elsewhere = [...found(TAG), ...found(URL_LITERAL), ...found(DIRECTIVE)];
+  return hits.some((at) => within(addresses, at) || (!within(spans, at) && within(elsewhere, at)));
+}
+
 /** The issues of one Markdown file. `skip` is the number of leading lines (frontmatter) to ignore. */
 export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[] {
   const issues: LintIssue[] = [];
@@ -88,10 +121,21 @@ export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[
     const line = all[at]!;
     if (line.code) {
       block = null;
+      if (line.fence !== undefined && expressionsIn(line.text.replace(FENCE, "")).length > 0) {
+        add(line.index, "error", "template-expression", TEMPLATE_MESSAGE);
+      }
       continue;
     }
     const text = line.text;
     const blank = text.trim() === "";
+    // At most three spaces in: a line further in may be the code block of a list item.
+    if (
+      !blank &&
+      /^ {0,3}\S/.test(text) &&
+      hasLiveExpression(text, block !== null || RAW_START.test(text))
+    ) {
+      add(line.index, "error", "template-expression", TEMPLATE_MESSAGE);
+    }
 
     if (block) {
       if (block.end === "blank" && blank) block = null;
@@ -178,16 +222,6 @@ export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[
         "table-alignment",
         "Column alignment (:--, :-:, --:) is not applied: every column is left-aligned.",
       );
-    }
-    for (const dest of destinations(text)) {
-      if (dest.value.includes("${")) {
-        add(
-          line.index,
-          "warning",
-          "template-link",
-          `The link "${dest.value.slice(0, 50)}" contains \${...}, which Jx runs as an expression (the address changes, or the link is lost when the expression cannot be evaluated; in the text around a link it stays as written). Write it as %24%7B...%7D.`,
-        );
-      }
     }
     const tags = new Set<string>();
     for (const m of prose.matchAll(INLINE)) {

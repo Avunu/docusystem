@@ -20,6 +20,10 @@
 // 2. A leading HTML comment before the frontmatter. Hooks that stamp a copyright line into every
 //    Markdown file (Frappe apps have one) put it before the `---`, which turns the frontmatter into
 //    page text. The comment is moved behind the frontmatter.
+// 3. `${`. Jx runs it as an expression, at build time, with the user's privileges, in every place
+//    that becomes an attribute (a link address, an autolink, raw HTML, a directive), so a page must
+//    not reach Jx with one: every `${` is written with a zero-width space inside (inert.ts), and the
+//    post-build step writes it back as text where it is text.
 //
 // Which files are copied is decided by fsutil.walkFiles, so the symlink policy of section 4.1 holds
 // here: a link to a file inside the repository is followed (its bytes are copied), any other link is
@@ -41,6 +45,7 @@ import {
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { moveLeadingComment } from "./frontmatter.js";
 import { ensureRealDir, isInside, removeInside, walkFiles } from "./fsutil.js";
+import { neutralizeSource } from "./inert.js";
 import { destinations, htmlAttributes, lines, type Destination } from "./markdown.js";
 import { githubUrl } from "./repo-links.js";
 import type { DocsConfig, Paths, StagedLink, StageResult } from "./types.js";
@@ -235,9 +240,9 @@ function stageHtml(
 
 /**
  * Rewrites the link and image destinations of one Markdown file (`file` is its path inside docs/),
- * and the links of its raw HTML tags, and moves a leading comment behind the frontmatter. `text` is
- * `source` itself, byte for byte, when there was nothing to do. Links in code (fences and spans) and
- * in HTML comments are never touched.
+ * and the links of its raw HTML tags, moves a leading comment behind the frontmatter, and writes a
+ * `${` inert. `text` is `source` itself, byte for byte, when there was nothing to do. Links in code
+ * (fences and spans) and in HTML comments are never touched; a `${` is, in code too (inert.ts).
  */
 export function stageMarkdown(
   source: string,
@@ -279,8 +284,9 @@ export function stageMarkdown(
   // (a line keeps its number), so the two never edit the same offsets.
   const html = stageHtml(rewritten, file, options, memo);
   links.push(...html.links);
+  // Last, so that what the rewriting above wrote is covered too.
   return {
-    text: html.text,
+    text: neutralizeSource(html.text),
     links: links.toSorted((a, b) => a.line - b.line),
     comment: moved !== null,
   };

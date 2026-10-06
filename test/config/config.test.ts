@@ -128,6 +128,25 @@ describe("validateConfig: what is refused", () => {
     expect(validateConfig({ ...GOOD, name: "😀".repeat(81) })).toHaveLength(1);
   });
 
+  // Jx evaluates every string that holds `${` as JavaScript when the site is built, and the text keys
+  // reach the pages (the header, the footer, the page titles, the links).
+  test.each(["name", "tagline", "license", "docs"])(
+    "%s with a `${...}` is refused before anything is built",
+    (key) => {
+      const problems = validateConfig({ ...GOOD, [key]: "Safe ${process.cwd()}" });
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain(`"${key}" must not contain \${...}`);
+      // what happens to the text: the three text keys are run, the folder name reaches the links
+      expect(problems[0]).toContain(key === "docs" ? "links" : "JavaScript");
+    },
+  );
+
+  test("a `$` or a `{` alone is fine in a text key", () => {
+    expect(
+      validateConfig({ ...GOOD, name: "Costs $5 {beta}", tagline: "Fast $ { } sync." }),
+    ).toEqual([]);
+  });
+
   test("the placeholder tagline of the older tools", () => {
     expect(validateConfig({ ...GOOD, tagline: PLACEHOLDER_TAGLINE })).toEqual([
       '"tagline" is still the placeholder text: say in one sentence what the project does',

@@ -4,6 +4,7 @@
 // build time as the `nav` content type.
 import { descriptionOf, labelOf, orderOf, readDocsWithProblems, titleOf, urlFor } from "./docs.js";
 import { writeJson } from "./fsutil.js";
+import { neutralizeStrings } from "./inert.js";
 import { humanize } from "./slug.js";
 import type {
   DocFile,
@@ -202,7 +203,10 @@ export function buildNav(
       section,
     })),
   };
-  return { nav, warnings };
+  // Titles, labels and descriptions come from files that a pull request can change (frontmatter, a
+  // heading, a code span in one, the name of a folder), and the layouts hand some of them to
+  // components as props, which Jx evaluates once more. Nothing in here may hold `${` (inert.ts).
+  return { nav: neutralizeStrings(nav), warnings };
 }
 
 /**

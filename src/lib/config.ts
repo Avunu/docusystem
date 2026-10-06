@@ -50,6 +50,11 @@ export const TOKEN_NAME = /^--[a-z][a-z0-9-]*$/;
 export const TOKEN_VALUE = /^[^;{}<>\\]*$/;
 const TOKEN_LOADS = /(?:url|src|image-set)\(|@import/i;
 
+// The text keys are shown by components that hand them on as props, and Jx evaluates every string
+// that holds `${` as JavaScript (a `license` of "MIT${...}" ran code on every page). The schema says
+// the same, with this pattern.
+export const NO_EXPRESSION = /^(?![\s\S]*\$\{)/;
+
 export const NAME_MAX = 80;
 export const TAGLINE_MAX = 200;
 export const LICENSE_MAX = 80;
@@ -162,6 +167,12 @@ function text(
   }
   if (value.trim() === "") {
     problems.push(`"${key}" must not be empty`);
+    return undefined;
+  }
+  if (!NO_EXPRESSION.test(value)) {
+    problems.push(
+      `"${key}" must not contain \${...}: Jx runs it as JavaScript when the site is built (got ${got(value)})`,
+    );
     return undefined;
   }
   if (max !== undefined && length(value) > max) {
@@ -325,6 +336,10 @@ export function validateConfig(raw: unknown): string[] {
       );
     } else if (docs.includes("\0")) {
       problems.push('"docs" must be a folder path (it contains a NUL character)');
+    } else if (!NO_EXPRESSION.test(docs)) {
+      problems.push(
+        `"docs" must not contain \${...}: the folder name reaches the site's links (got ${got(docs)})`,
+      );
     }
   }
 

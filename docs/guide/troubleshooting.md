@@ -59,6 +59,14 @@ The `lint:` stage reports them as errors with `file:line`: "Reference-style link
 
 The `assert:` stage prints `FAIL` for the assertion that no page has an empty link (an `<a href>` with no text, image or `aria-label`). Jx writes an empty link followed by the text (or the image) for a raw HTML anchor in a paragraph (an anchor inside a `<div>` or `<p>` block keeps its link), and the assertion fails in every mode, including `--lenient`. The `lint:` stage reports the anchor first, with `file:line` (an error, printed as a warning under `--lenient`), and `docusystem lint` lists it without building. Replace the raw anchor with a Markdown link, `[text](url)`. Badges are `[![alt](image)](url)`.
 
+## A `${...}` in a link or a tag is an error
+
+```text
+lint: error: docs/x.md:12  A ${...} in a link address, a URL, an HTML tag, a directive or the language of a code fence is run by Jx as JavaScript when the site is built. ...
+```
+
+Jx runs every string that holds `${` as JavaScript when it builds a link, an image or an HTML attribute. The build therefore writes the text inert (a hidden zero-width space between `$` and `{`), so nothing runs, but the link or attribute no longer says what you wrote, and the strict build fails so that you and the reviewer see it. Write the address as `%24%7B...%7D`, or put the text in a code span or a code block, where `${HOME}` stays as written. See [what does not render](writing-docs.md#what-does-not-render).
+
 ## A symbolic link is not published
 
 ```text
