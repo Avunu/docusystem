@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/@avunu/docusystem/config.schema.json",
+  "name": "docusystem",
+  "tagline": "The documentation system shared by every Avunu open-source project: a CLI that builds a project's Markdown into its docs site, and the reusable workflows that check and deploy it.",
+  "slug": "docusystem",
+  "platform": "general",
+  "repo": "https://github.com/Avunu/docusystem",
+  "domain": "docusystem.avunu.net",
+  "license": "MIT"
+}

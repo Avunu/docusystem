@@ -8,6 +8,7 @@
     "site",
     "verify",
     "examples/*/docs-site/package-lock.json",
+    "docs-site/package-lock.json",
     ".docusystem",
     "test/fixtures",
     "test/**/fixtures"
