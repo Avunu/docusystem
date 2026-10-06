@@ -1,9 +1,9 @@
-import { symlinkSync } from "node:fs";
+import { readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { readBundledCatalog } from "../../src/lib/catalog.js";
-import { checkSlug, preflight } from "../../src/lib/preflight.js";
-import { listTree, tempDir } from "../support/index.js";
+import { checkSlug, preflight, starterLeftovers } from "../../src/lib/preflight.js";
+import { listTree, REPO_ROOT, tempDir, writeTree } from "../support/index.js";
 import { GOOD, shell } from "./helpers.js";
 
 describe("checkSlug", () => {
@@ -201,6 +201,7 @@ describe("preflight: leftovers of the copied starter", () => {
     ["layouts", "layouts/ in the site folder is ignored", "overrides/layouts/"],
     ["pages", "pages/ in the site folder is ignored", "overrides/pages/"],
     ["scripts", "scripts/ in the site folder is ignored", "delete this folder"],
+    ["data", "data/ in the site folder is ignored", "bundled in the package"],
   ])("%s/ is a warning", (name, start, advice) => {
     const { site } = shell({ files: { [`docs-site/${name}/x.json`]: "{}" } });
     const warnings = preflight(site).warnings.filter((w) => !w.startsWith("slug "));
@@ -218,14 +219,38 @@ describe("preflight: leftovers of the copied starter", () => {
     expect(warnings[0]).toContain('"theme"');
   });
 
+  test("the starter's own configuration file is a warning that says what replaced it", () => {
+    const { site } = shell({ files: { "docs-site/docs.config.json": "{}" } });
+    const warnings = preflight(site).warnings.filter((w) => !w.startsWith("slug "));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("docs.config.json in the site folder is ignored");
+    expect(warnings[0]).toContain("leftover of the copied starter");
+    expect(warnings[0]).toContain("docusystem.config.json now");
+  });
+
+  test("the starter's README.md is a warning", () => {
+    const { site } = shell({ files: { "docs-site/README.md": "# Documentation site\n" } });
+    const warnings = preflight(site).warnings.filter((w) => !w.startsWith("slug "));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("README.md in the site folder is ignored");
+    expect(warnings[0]).toContain("leftover of the copied starter");
+  });
+
   test("all of them at once, in a fixed order, after the slug warning", () => {
     const files = Object.fromEntries(
-      ["components/a.json", "layouts/b.json", "pages/c.json", "project.json", "scripts/d.ts"].map(
-        (f) => [`docs-site/${f}`, "x"],
-      ),
+      [
+        "components/a.json",
+        "layouts/b.json",
+        "pages/c.json",
+        "project.json",
+        "scripts/d.ts",
+        "data/projects.snapshot.json",
+        "docs.config.json",
+        "README.md",
+      ].map((f) => [`docs-site/${f}`, "x"]),
     );
     const { warnings } = preflight(shell({ files }).site);
-    expect(warnings).toHaveLength(6);
+    expect(warnings).toHaveLength(9);
     expect(warnings[0]).toContain("slug ");
     expect(warnings.slice(1).map((w) => w.split(" ")[0])).toEqual([
       "components/",
@@ -233,6 +258,9 @@ describe("preflight: leftovers of the copied starter", () => {
       "pages/",
       "project.json",
       "scripts/",
+      "data/",
+      "docs.config.json",
+      "README.md",
     ]);
   });
 
@@ -246,5 +274,80 @@ describe("preflight: leftovers of the copied starter", () => {
       },
     });
     expect(preflight(site).warnings).toEqual([]);
+  });
+});
+
+describe("preflight: the starter's public/ folder", () => {
+  const PACKAGE_PUBLIC = join(REPO_ROOT, "site", "public");
+  const packageFile = (rel: string): string => readFileSync(join(PACKAGE_PUBLIC, rel), "utf8");
+  /** What the starter's public/ was: the package's own files, plus the CNAME init wrote. */
+  const starterPublic = {
+    "docs-site/public/favicon.svg": packageFile("favicon.svg"),
+    "docs-site/public/brand/avunu-icon.svg": packageFile("brand/avunu-icon.svg"),
+    "docs-site/public/fonts/LICENSE-Figtree.txt": packageFile("fonts/LICENSE-Figtree.txt"),
+    "docs-site/public/CNAME": "example-project.avunu.net\n",
+  };
+  const publicWarnings = (files: Record<string, string>): string[] =>
+    preflight(shell({ files }).site).warnings.filter((w) => w.startsWith("public/"));
+
+  test("files identical to the package's are a leftover, and the warning counts them and names the CNAME", () => {
+    const [warning, ...others] = publicWarnings(starterPublic);
+    expect(others).toEqual([]);
+    expect(warning).toContain(
+      "public/ in the site folder holds 3 files identical to the package's own",
+    );
+    expect(warning).toContain("brand/avunu-icon.svg, favicon.svg, fonts/LICENSE-Figtree.txt");
+    expect(warning).toContain("leftover of the copied starter");
+    expect(warning).toContain("do not follow package updates");
+    expect(warning).toContain("public/CNAME is not allowed either");
+  });
+
+  test("one identical file is enough, and without a CNAME the warning does not mention it", () => {
+    const [warning] = publicWarnings({
+      "docs-site/public/favicon.svg": packageFile("favicon.svg"),
+    });
+    expect(warning).toContain("holds 1 file identical to the package's own (favicon.svg)");
+    expect(warning).not.toContain("CNAME");
+  });
+
+  test("a shell's own public/ is not a leftover: new files, and a file of the same name that differs", () => {
+    expect(
+      publicWarnings({
+        "docs-site/public/og.png": "not the package's",
+        "docs-site/public/favicon.svg": "<svg>mine</svg>",
+        "docs-site/public/brand/logo.svg": "<svg/>",
+      }),
+    ).toEqual([]);
+  });
+
+  test("a CNAME alone is left to the assemble error, not repeated as a leftover", () => {
+    expect(publicWarnings({ "docs-site/public/CNAME": "example.avunu.net\n" })).toEqual([]);
+  });
+
+  test("a symbolic link is not a copy, and a site without a public/ folder is fine", () => {
+    const linked = shell({
+      files: { "docs-site/public/favicon.svg": { symlink: join(PACKAGE_PUBLIC, "favicon.svg") } },
+    });
+    expect(starterLeftovers(linked.site)).toEqual([]);
+    expect(starterLeftovers(shell().site)).toEqual([]);
+  });
+
+  test("starterLeftovers takes the package's folder as a parameter and returns names in the fixed order", () => {
+    const source = tempDir();
+    const { site } = shell({
+      files: {
+        "docs-site/public/a.txt": "same",
+        "docs-site/public/b.txt": "different",
+        "docs-site/scripts/x.ts": "x",
+        "docs-site/docs.config.json": "{}",
+      },
+    });
+    writeTree(source, { "public/a.txt": "same", "public/b.txt": "package's" });
+    expect(starterLeftovers(site, { siteSource: source }).map((l) => l.name)).toEqual([
+      "scripts",
+      "docs.config.json",
+      "public",
+    ]);
+    expect(starterLeftovers(site).map((l) => l.name)).toEqual(["scripts", "docs.config.json"]);
   });
 });

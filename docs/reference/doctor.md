@@ -90,6 +90,7 @@ An override that is `current` is reported as `ok`.
 All warnings:
 
 - A `.pre-commit-config.yaml` with a copyright hook (exclude `^docs/` from it).
-- Leftovers of the earlier starter in the site folder: `components/`, `layouts/`, `pages/`, `project.json` or `scripts/`.
+- Leftovers of the earlier starter in the site folder: `components/`, `layouts/`, `pages/`, `project.json`, `scripts/`, `data/`, `docs.config.json`, `README.md`, or a `public/` that holds files identical to the package's own (a `public/` of your own is not a leftover). One warning lists them.
+- A `package.json` in the site folder with a `postinstall` script or a `@jxsuite/*` dependency (a copy of the starter's), or with an `engines.bun` entry (the starter's, which needed Bun). They are separate warnings.
 
 Formatter configurations that would reformat `docs/` are only mentioned.

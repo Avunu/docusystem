@@ -26,7 +26,7 @@ your-repo/
     dependabot.yml                   keeps the package and the workflow pin current
 ```
 
-The list is closed. A project that needs more has an [override](guide/overrides.md), not another file. The shell must not contain components, layouts, pages, fonts, scripts, tests, a `project.json`, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
+The list is closed. A project that needs more has an [override](guide/overrides.md), not another file. The shell must not contain components, layouts, pages, fonts, scripts, tests, a `project.json`, a `data/` folder, a `docs.config.json`, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
 
 ## What a project gets
 
@@ -41,7 +41,7 @@ The list is closed. A project that needs more has an [override](guide/overrides.
 `docusystem build` assembles a plain [Jx](https://jxsuite.com) project in `docs-site/.docusystem/site/` from real copies: the package's own `site/` folder, your overrides, a generated `project.json`, the resolved config, the catalog and your staged Markdown. It runs the pinned Jx compiler on that folder, post-processes the result, asserts what Jx would silently get wrong, and publishes it to `docs-site/dist`. Jx is an implementation detail: no project names a Jx package. The steps are listed in [Build pipeline](reference/build-pipeline.md).
 
 > [!NOTE]
-> Before this package, Avunu's first documentation sites copied a template folder into each repository. Where these pages mention "the earlier starter" they mean that template. `docusystem init` and `docusystem doctor` recognize what it leaves behind.
+> Before this package, Avunu's first documentation sites copied a template folder into each repository. Where these pages mention "the earlier starter" they mean that template. `docusystem init` and `docusystem doctor` recognize what it leaves behind, and [Migrating from the earlier starter](guide/migrating-from-the-starter.md) moves a repository to the package.
 
 ## Requirements
 

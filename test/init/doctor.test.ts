@@ -2,14 +2,14 @@
 // state that does not, including the two false OKs the judges found. The repository under test is
 // the one init writes (so init and doctor are checked against each other), changed one thing at a
 // time. WP1's config module and WP2's overrides are the fakes of ./support/neighbours.ts until merged.
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { diagnose, run } from "../../src/commands/doctor.js";
 import { runInit } from "../../src/commands/init.js";
 import { overrideFindings } from "../../src/lib/overrides.js";
 import type { Finding } from "../../src/lib/types.js";
-import { runCli, testContext } from "../support/index.js";
+import { REPO_ROOT, runCli, testContext } from "../support/index.js";
 import { readFixture } from "./support/fixtures.js";
 import {
   copyPilotGithub,
@@ -743,6 +743,41 @@ describe("the rest of the repository", () => {
     expect(warnings(root)).toContain(
       "docs-site/ has components, layouts, pages, project.json, scripts: leftovers of the copied starter",
     );
+  });
+
+  test("the rest of what the starter copied is a warning too: data, its configuration file, its README and a public/ of the package's own files", async () => {
+    const root = await initialisedRepo();
+    mkdirSync(join(site(root), "data"));
+    mkdirSync(join(site(root), "public"));
+    writeFileSync(join(site(root), "docs.config.json"), "{}");
+    writeFileSync(join(site(root), "README.md"), "# Documentation site\n");
+    // a public/ of the shell's own is not a leftover ...
+    writeFileSync(join(site(root), "public", "og.png"), "mine");
+    expect(warnings(root)).toContain(
+      "docs-site/ has data, docs.config.json, README.md: leftovers of the copied starter",
+    );
+    expect(warnings(root)).not.toContain("public");
+    // ... but the package's own files are
+    writeFileSync(
+      join(site(root), "public", "favicon.svg"),
+      readFileSync(join(REPO_ROOT, "site", "public", "favicon.svg")),
+    );
+    expect(warnings(root)).toContain(
+      "docs-site/ has data, docs.config.json, README.md, public: leftovers of the copied starter",
+    );
+    expect(errors(root)).toBe("");
+  });
+
+  test("an engines.bun entry is a warning of its own, and an engines.node is not", async () => {
+    const root = await initialisedRepo();
+    const file = join(site(root), "package.json");
+    const pkg = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...pkg, engines: { node: ">=22" } }));
+    expect(warnings(root)).toBe("");
+    writeFileSync(file, JSON.stringify({ ...pkg, engines: { node: ">=22", bun: ">=1.4.0" } }));
+    expect(warnings(root)).toContain("docs-site/package.json has an engines.bun entry");
+    expect(warnings(root)).not.toContain("copy of the starter");
+    expect(errors(root)).toBe("");
   });
 
   test("a package.json that is the starter's: a postinstall script or a Jx dependency is a warning", async () => {

@@ -59,15 +59,19 @@ Both workflows pin the shared workflows to the commit of the tag `v<installed ve
 
 Useful options:
 
-| Option                                                     | Effect                                                                                                     |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--dry-run`                                                | Prints every file and diff, writes nothing.                                                                |
-| `--site-dir <dir>`                                         | Uses another folder than `docs-site`, relative to the repository root.                                     |
-| `--docs <path>`                                            | Sets the Markdown folder, relative to the site folder (default `../docs`).                                 |
-| `--no-workflow`, `--no-dependabot`, `--no-patch-automerge` | Skips that part.                                                                                           |
-| `--force`                                                  | Overwrites a differing workflow, or rewrites an existing `package.json`'s dependencies to the one package. |
+| Option                                                     | Effect                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`                                                | Prints every file and diff, writes nothing.                                                                               |
+| `--name`, `--tagline`, `--slug`, `--platform`, `--license` | Sets that value instead of inferring it. `--tagline` and `--name` are needed for a repository that is not in the catalog. |
+| `--domain <domain>`                                        | Sets the domain instead of the slug with `_` written as `-`, plus `.avunu.net`.                                           |
+| `--site-dir <dir>`                                         | Uses another folder than `docs-site`, relative to the repository root.                                                    |
+| `--docs <path>`                                            | Sets the Markdown folder, relative to the site folder (default `../docs`).                                                |
+| `--no-workflow`, `--no-dependabot`, `--no-patch-automerge` | Skips that part.                                                                                                          |
+| `--force`                                                  | Overwrites a differing workflow, or rewrites an existing `package.json`'s dependencies to the one package.                |
 
 `init` refuses to overwrite a workflow that differs from its own scaffold (a workflow copied from the earlier starter counts) and refuses a `package.json` that has a `postinstall` script or any `@jxsuite/*` dependency, because that is a sign of the earlier copy-the-template starter. Pass `--force` once you have read what it would replace. Run `docusystem init --help` for the whole option list.
+
+A repository that already has a `docs-site/` copied from the earlier starter follows [Migrating from the earlier starter](migrating-from-the-starter.md): `init` reads the starter's `docs.config.json` (so the published domain is kept), and lists the starter's files that are still in the folder.
 
 ## Check the result
 
