@@ -1,0 +1,7 @@
+{
+  "$comment": "The rules of the docs content type (content.docs in project.json) that src/lib/docs.ts and nav.ts mirror, copied from template/project.json of the project documentation starter at commit 1820d01 (the starter that the three pilots were built from). site/project.base.json (WP7) must carry the same four rules: test/content/jx-agreement.test.ts compares them as soon as that file exists, and runs Jx's own matcher over these.",
+  "exclude": ["**/node_modules/**", "**/.*", "**/.*/**", "**/_*", "**/_*/**"],
+  "where": { "draft": { "$ne": true }, "publish": { "$ne": false } },
+  "route": "/docs/{id:slug}/",
+  "indexRoute": "/docs/{dir:slug}/"
+}
