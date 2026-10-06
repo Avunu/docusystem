@@ -1,0 +1,5 @@
+Building site from /work/site...
+Content ids: "docs" has two entries with the id "guide" (guide/README.md and guide.md). A lookup finds only the first; give one of them a distinct name.
+Content routes: "docs" has two entries at /docs/guide (guide/README.md and guide.md). Only guide/README.md is routed; make the route unique, for example by adding a field to the template.
+
+Done: 4 routes → 16 files

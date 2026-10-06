@@ -1,0 +1,5 @@
+Building site from /work/site...
+Content type "docs": entry "README" references missing asset "assets/not-there.png"
+Content links: "docs": "README.md" links to "guide/missing.md", which does not exist; it renders as plain text.
+
+Done: 4 routes → 16 files
