@@ -11,6 +11,7 @@ import { join, relative, resolve, sep } from "node:path";
 import {
   hasSiteExclusion,
   isAutoMergeWorkflow,
+  patchAutoMerge,
   siteBranchPrefix,
   withoutComments,
 } from "../lib/automerge.js";
@@ -401,17 +402,26 @@ function checkAutoMerge(repoRoot: string, siteRel: string, add: Add): void {
     const where = `${WORKFLOWS}/${file}`;
     if (hasSiteExclusion(text, siteRel)) {
       add("ok", `${where}: leaves the site's Dependabot pull requests to a person`);
-    } else if (withoutComments(text).includes(`dependabot/bun/${siteRel}`)) {
+      continue;
+    }
+    // `init` is named only when it would do the fix: otherwise the finding says what to do by hand
+    const patch = patchAutoMerge(text, siteRel);
+    const byHand = `\`docusystem init\` cannot patch it: ${patch.note ?? "edit its condition by hand"}`;
+    if (withoutComments(text).includes(`dependabot/bun/${siteRel}`)) {
       add(
         "error",
         `${where} excludes dependabot/bun/${siteRel}, but the site's lockfile makes Dependabot's ecosystem npm: its branches are ${prefix}/...  ` +
-          `Change the exclusion to !startsWith(github.head_ref, '${prefix}') (\`docusystem init\` does)`,
+          (patch.changed
+            ? `Change the exclusion to !startsWith(github.head_ref, '${prefix}') (\`docusystem init\` does)`
+            : byHand),
       );
     } else {
       add(
         "error",
         `${where} merges Dependabot's pull requests but does not skip the site's: a merge to the default branch publishes the site. ` +
-          `Add !startsWith(github.head_ref, '${prefix}') to the condition (\`docusystem init\` does)`,
+          (patch.changed
+            ? `Add !startsWith(github.head_ref, '${prefix}') to the condition (\`docusystem init\` does)`
+            : byHand),
       );
     }
   }

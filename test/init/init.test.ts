@@ -888,16 +888,59 @@ jobs:
     expect(out).toContain("docs-site updates now wait for a person");
   });
 
-  test("another shape is left alone and the line to add is printed", async () => {
-    const odd = automerge.replace(
+  test("the pull request author's condition, the form zizmor recommends, gets the exclusion too", async () => {
+    const author = automerge.replace(
       "github.actor == 'dependabot[bot]'",
-      "github.actor == 'dependabot[bot]' && always()",
+      "github.event.pull_request.user.login == 'dependabot[bot]'",
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": author } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toContain(
+      "if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
+    );
+    expect(out).toContain("docs-site updates now wait for a person");
+    expect(out).not.toContain("dependabot-auto-merge.yml:"); // nothing left to do by hand for it
+  });
+
+  test("a folded multi-line condition gets the exclusion as a new first line", async () => {
+    const folded = automerge.replace(
+      "if: ${{ github.actor == 'dependabot[bot]' }}",
+      [
+        "if: >-",
+        "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+        "      github.repository == 'Avunu/frappe-nix'",
+      ].join("\n"),
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": folded } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    const text = readIn(root, ".github/workflows/dependabot-auto-merge.yml") ?? "";
+    expect(text).toContain(
+      [
+        "    if: >-",
+        "      !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') &&",
+        "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+        "      github.repository == 'Avunu/frappe-nix'",
+      ].join("\n"),
+    );
+    expect(out).not.toContain("dependabot-auto-merge.yml:"); // nothing left to do by hand for it
+  });
+
+  test("a shape it cannot patch is left alone, and the condition and the finished line are printed", async () => {
+    const odd = automerge.replace(
+      "if: ${{ github.actor == 'dependabot[bot]' }}",
+      `if: "github.actor == 'dependabot[bot]' && always()"`,
     );
     const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": odd } });
     const { code, out } = await init(root);
     expect(code).toBe(0);
     expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(odd);
-    expect(out).toContain("!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')");
+    expect(out).toContain("Not done, for you to do by hand:");
+    expect(out).toContain("line 6: `github.actor == 'dependabot[bot]' && always()`");
+    expect(out).toContain(
+      "`if: ${{ github.actor == 'dependabot[bot]' && always() && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}`",
+    );
   });
 
   test("--no-patch-automerge", async () => {
