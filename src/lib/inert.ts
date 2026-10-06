@@ -21,8 +21,10 @@
 //      refused when it holds one (config.ts).
 //   3. after the build, restoreText writes the marker back as `&#36;{`, which is how Jx writes text
 //      that holds `${`, in every text node of the output. Prose, headings and code blocks read as
-//      they were written and a code sample can be copied. Only attribute values keep the
-//      zero-width space, which is where a `${` must not be live anyway.
+//      they were written and a code sample can be copied. Attribute values keep the zero-width space,
+//      which is where a `${` must not be live anyway (the runtime of the page reads them). The head
+//      is the exception: nothing evaluates the text of `<title>` or the `content` of a `<meta>`, so
+//      those, and the search index (data that the search box shows as text), get the plain `${` back.
 //
 // test/integration/jx-expressions.test.ts and its seeded random corpus build attacks with the real
 // Jx and fail when any expression runs.
@@ -140,10 +142,23 @@ function tagEnd(html: string, open: number): number {
   return html.length;
 }
 
+/** The marker (and the spaces a tokenizer may have put around it) back to the `${` it stands for. */
+const MARKER_IN_DATA = new RegExp(`\\$(\\s*)(?:${ZWSP}|\\\\u200[bB])(\\s*)\\{`, "g");
+
+/**
+ * Data that is only ever shown as text (the search index) with the marker written back as `${`. The
+ * same string comes back when there was nothing to restore.
+ */
+export function restoreData(text: string): string {
+  return text.replaceAll(MARKER_IN_DATA, "$$$1$2{");
+}
+
 /**
  * HTML with the marker of neutralizeSource written back as `&#36;{` in every text node, which is how
  * Jx writes a `${` that is text. Attribute values, comments and the content of script and style stay
- * as they are. The same string comes back when there was nothing to restore.
+ * as they are, except in the head: the text of `<title>` and the attributes of `<meta>` get the plain
+ * `${` back, because nothing evaluates them. The same string comes back when there was nothing to
+ * restore.
  */
 export function restoreText(html: string): string {
   if (!html.includes(ZWSP)) return html;
@@ -156,18 +171,30 @@ export function restoreText(html: string): string {
   );
   let out = "";
   let at = 0;
+  let inTitle = false;
   while (at < html.length) {
     const open = html.indexOf("<", at);
-    out += html.slice(at, open === -1 ? html.length : open).replaceAll(INERT, "&#36;{");
+    out += html
+      .slice(at, open === -1 ? html.length : open)
+      .replaceAll(INERT, inTitle ? "${" : "&#36;{");
     if (open === -1) break;
     let end = tagEnd(html, open);
     const raw = /^<(script|style)\b/i.exec(html.slice(open, open + 9));
+    const tag = html.slice(open, end);
+    if (/^<meta[\s/>]/i.test(tag)) {
+      out += tag.replaceAll(INERT, "${");
+    } else {
+      if (/^<title[\s>]/i.test(tag)) inTitle = true;
+      else if (/^<\/title[\s>]/i.test(tag)) inTitle = false;
+      out += tag;
+    }
     if (raw !== null) {
       // the content of these is not text of the page: copy it up to the closing tag
       const close = html.toLowerCase().indexOf(`</${raw[1]!.toLowerCase()}`, end);
-      end = close === -1 ? html.length : close;
+      const stop = close === -1 ? html.length : close;
+      out += html.slice(end, stop);
+      end = stop;
     }
-    out += html.slice(open, end);
     at = end;
   }
   return out;

@@ -9,6 +9,7 @@ import {
   neutralizeData,
   neutralizeSource,
   neutralizeStrings,
+  restoreData,
   restoreText,
 } from "../../src/lib/inert.js";
 
@@ -148,6 +149,20 @@ describe("restoreText: the marker is written back as text, where it is text", ()
     expect(restoreText(html)).toBe(`<a title="a > ${INERT}x}">&#36;{y}</a>`);
   });
 
+  test("the head is the exception: the text of <title> and the attributes of <meta> get the plain `${` back", () => {
+    const html =
+      `<head><title>Set ${INERT}HOME} safely</title>` +
+      `<meta name="description" content="Use ${INERT}HOME} &amp; more">` +
+      `<meta property="og:title" content='${INERT}x}'></head>` +
+      `<body><h1>Set ${INERT}HOME}</h1><a href="/x/${INERT}y}" title="${INERT}z}">t</a></body>`;
+    expect(restoreText(html)).toBe(
+      "<head><title>Set ${HOME} safely</title>" +
+        '<meta name="description" content="Use ${HOME} &amp; more">' +
+        "<meta property=\"og:title\" content='${x}'></head>" +
+        `<body><h1>Set &#36;{HOME}</h1><a href="/x/${INERT}y}" title="${INERT}z}">t</a></body>`,
+    );
+  });
+
   test("the content of script and style is not text of the page: it stays as it is", () => {
     const html = `<script>var a = "${INERT}";</script><style>/* ${INERT} */</style><p>${INERT}</p>`;
     expect(restoreText(html)).toBe(
@@ -173,6 +188,20 @@ describe("restoreText: the marker is written back as text, where it is text", ()
     expect(restoreText(`<p>${INERT}a} <b title="${INERT}b}`)).toBe(
       `<p>&#36;{a} <b title="${INERT}b}`,
     );
+  });
+});
+
+describe("restoreData: the search index shows text, so the marker is not needed in it", () => {
+  test("the marker goes, with or without the spaces that a tokenizer put around it", () => {
+    expect(restoreData(`{"text":"Set ${INERT}HOME} and $ ${ZWSP}{PORT}"}`)).toBe(
+      '{"text":"Set ${HOME} and $ {PORT}"}',
+    );
+    expect(restoreData('{"text":"a $\\u200b{b}"}')).toBe('{"text":"a ${b}"}');
+  });
+
+  test("the same string comes back when there is no marker", () => {
+    const json = '{"text":"price $5 and {x}"}';
+    expect(restoreData(json)).toBe(json);
   });
 });
 

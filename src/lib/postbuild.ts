@@ -2,7 +2,8 @@
 //   - whitespace: the emitter's separators between inline nodes and between highlighted code tokens
 //     (tidy.ts).
 //   - `${`: staging writes every one with a zero-width space inside, so that Jx cannot evaluate it
-//     (inert.ts); in the text of a page it is written back as Jx writes text that holds `${`.
+//     (inert.ts); in the text of a page, the title, the meta tags and the search index it is written
+//     back (an attribute of the page itself keeps the space).
 //   - <title>: Jx writes the title text as it is, so a `<` in it ("Array<string>") is written raw;
 //     it is escaped. (The package's own pages hand Jx the title already escaped, because the text
 //     of a title can hold `</title>` and then cannot be told from the end of the element; this is
@@ -27,7 +28,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { isInside, removeInside } from "./fsutil.js";
-import { restoreText } from "./inert.js";
+import { restoreData, restoreText } from "./inert.js";
 import { distFiles, fileFor, htmlPages, routeOfFile } from "./links.js";
 import { publishNotFoundPage, tidyPage } from "./tidy.js";
 import type { DocsConfig, NavData, PostbuildSummary, RepoLink } from "./types.js";
@@ -338,9 +339,12 @@ export function runPostbuild(
   let searchTitles = 0;
   const searchFile = join(dist, "search-index.json");
   if (existsSync(searchFile)) {
-    const fixed = fixSearchIndex(readFileSync(searchFile, "utf8"), nav.pages);
+    const before = readFileSync(searchFile, "utf8");
+    const fixed = fixSearchIndex(before, nav.pages);
     searchTitles = fixed.changed;
-    if (fixed.changed > 0) writeFileSync(searchFile, fixed.text);
+    // the index is data that the search box shows as text: the marker of inert.ts is not needed in it
+    const restored = restoreData(fixed.changed > 0 ? fixed.text : before);
+    if (restored !== before) writeFileSync(searchFile, restored);
   }
 
   return {
