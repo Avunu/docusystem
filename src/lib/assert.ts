@@ -119,6 +119,23 @@ export function emptyLinks(html: string): string[] {
   return found;
 }
 
+/**
+ * Whether the head of a page holds more than one `<title>` or `</title>`. Jx writes the text of the
+ * title as it is, so a title that carries `</title>` ends the element early and what follows it is
+ * live HTML in the head (a `<script>` from a front-matter title, say). The text is the one thing that
+ * cannot be trusted to delimit itself, so this counts the tags instead of reading the text between
+ * them. The head ends at the last `</head>`: the Markdown of a page cannot write one (Jx escapes the
+ * text of the body), so it is Jx's own, even when the title has forged one earlier.
+ */
+export function titleHoldsMarkup(html: string): boolean {
+  const end = html.toLowerCase().lastIndexOf("</head");
+  const head = end === -1 ? html : html.slice(0, end);
+  return (
+    (head.match(/<title[\s/>]/gi)?.length ?? 0) > 1 ||
+    (head.match(/<\/title[\s/>]/gi)?.length ?? 0) > 1
+  );
+}
+
 // ---- Fonts ----
 
 /** Hosts of font services: a documentation site publishes its own fonts (the reader's address goes nowhere else). */
@@ -254,6 +271,16 @@ export function assertBuild(
       headings.length === 0,
       "every page has exactly one <h1>",
       `pages without exactly one <h1>: ${listOf(headings)}`,
+    ),
+  );
+
+  // The text of <title> is text: Jx writes it unescaped, so a `</title>` in it would end the element.
+  const injected = pages.flatMap(({ route, html }) => (titleHoldsMarkup(html) ? [route] : []));
+  out.push(
+    verdict(
+      injected.length === 0,
+      "every page's <title> is text only, with no markup after it",
+      `the <title> ends early, so what follows it in the head is live markup (a title that holds </title>): ${listOf(injected)}`,
     ),
   );
 

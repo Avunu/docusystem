@@ -2,7 +2,10 @@
 //   - whitespace: the emitter's separators between inline nodes and between highlighted code tokens
 //     (tidy.ts).
 //   - <title>: Jx writes the title text as it is, so a `<` in it ("Array<string>") is written raw;
-//     it is escaped.
+//     it is escaped. (The package's own pages hand Jx the title already escaped, because the text
+//     of a title can hold `</title>` and then cannot be told from the end of the element; this is
+//     the repair for the `<` of a page of the shell's own, and assert.ts fails the build when a
+//     `</title>` got through.)
 //   - canonical URL and og:url: Jx writes them without the trailing slash the pages are served at.
 //   - 404.html: GitHub Pages serves it for any unknown address (Jx writes it to 404/index.html).
 //   - index.md: Jx writes a Markdown copy of every page next to it (the whole page, menus and search
@@ -41,7 +44,13 @@ export function unhighlightedLanguages(html: string): string[] {
   return [...found].sort();
 }
 
-/** Escapes `<`, `>` and a lone `&` in the text of <title>, which Jx writes unescaped. */
+/**
+ * Escapes `<`, `>` and a lone `&` in the text of <title>, which Jx writes unescaped. The text runs to
+ * the first `</title>`, so this cannot repair a title that holds one (the rest of it would be left
+ * as markup): pages/[...path].json escapes its titles before Jx writes them for that reason, and an
+ * override page that puts text it does not control in its title must do the same. The check of the
+ * result is titleHoldsMarkup in assert.ts.
+ */
 export function escapeTitle(html: string): string {
   return html.replace(
     /<title>([\s\S]*?)<\/title>/,

@@ -396,6 +396,12 @@ test("the text of <title> is escaped, entities that are already there are kept",
   expect(escapeTitle("<p>no title</p>")).toBe("<p>no title</p>");
 });
 
+test("a title that pages/[...path].json already escaped is left as it is", () => {
+  const escaped =
+    "<title>Evil &lt;/title&gt;&lt;script&gt;x&lt;/script&gt; &amp; Co · Docs</title>";
+  expect(escapeTitle(escaped)).toBe(escaped);
+});
+
 test("code blocks in a language the build cannot highlight are reported once each", () => {
   const html =
     '<pre><code class="language-bash shiki">x</code></pre><pre><code class="language-rust">y</code></pre><pre><code class="language-rust">z</code></pre><pre><code class="language-vue">v</code></pre><pre><code class="language-text">t</code></pre><pre><code>no language</code></pre>';

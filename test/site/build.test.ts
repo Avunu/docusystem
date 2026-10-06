@@ -512,3 +512,66 @@ describe("light and dark", () => {
     }
   });
 });
+
+describe("a title that holds markup", () => {
+  // Jx escapes every text node and attribute it writes except the text of <title>, which it writes
+  // as it is: a title with `</title>` in it ended the element and put what followed into the head.
+  // The titles of pages come from front matter and from headings (a code span or an entity in a
+  // heading is plain text in the title), so both are tried; the sidebar data carries the title the
+  // page shows, as it does in a real build.
+  const PAYLOAD = '</title><script>document.documentElement.setAttribute("data-pwn","1")</script>';
+  const TITLES: Record<string, string> = {
+    "/docs/evil-front-matter/": `Evil ${PAYLOAD}`,
+    "/docs/evil-heading/": `Code ${PAYLOAD} span`,
+  };
+  let hostile: Built;
+
+  beforeAll(() => {
+    const navPages = { ...nav.pages };
+    for (const [route, title] of Object.entries(TITLES)) {
+      navPages[route] = { title, description: "", section: "", prev: null, next: null, edit: "" };
+    }
+    hostile = build("hostile", {
+      nav: { ...nav, pages: navPages },
+      extraDocs: {
+        "evil-front-matter.md": `---\ntitle: '${TITLES["/docs/evil-front-matter/"]!.replaceAll("'", "''")}'\n---\n\nBody.\n`,
+        "evil-heading.md": `# Code \`${PAYLOAD}\` span\n\nBody.\n`,
+      },
+    });
+  }, 120_000);
+
+  test("is built without a problem", () => {
+    expect(hostile.run.status, hostile.run.output).toBe(0);
+    expect(hostile.run.output.split("\n").filter((line) => PROBLEM.test(line))).toEqual([]);
+  });
+
+  test("is text in <title>: one element, nothing after it, the page's own title around it", () => {
+    for (const route of Object.keys(TITLES)) {
+      const html = pageOf(hostile, route);
+      const head = html.slice(0, html.lastIndexOf("</head>"));
+      expect(count(head, /<title>/g), route).toBe(1);
+      expect(count(head, /<\/title>/g), route).toBe(1);
+      const text = /<title>([\s\S]*?)<\/title>/.exec(head)![1]!;
+      expect(text, route).not.toMatch(/[<>]/);
+      expect(decode(text), route).toBe(`${TITLES[route]} · Example Project`);
+      // no script came out of it, in the head or anywhere else on the page
+      expect(html, route).not.toContain(`<script>document.documentElement.setAttribute("data-pwn"`);
+    }
+  });
+
+  test("is text in the social tags and in the page's h1 as well", () => {
+    for (const route of Object.keys(TITLES)) {
+      const html = pageOf(hostile, route);
+      const og = /<meta property="og:title" content="([^"]*)">/.exec(html)![1]!;
+      expect(decode(og), route).toBe(`${TITLES[route]} · Example Project`);
+      expect(og, route).not.toContain("<");
+      expect(content(html), route).not.toContain("</title><script>");
+    }
+  });
+
+  test("leaves the other pages as they were", () => {
+    for (const route of DOC_ROUTES) {
+      expect(pageOf(hostile, route), route).toBe(pageOf(main, route));
+    }
+  });
+});

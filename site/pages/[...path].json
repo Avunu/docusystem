@@ -1,11 +1,11 @@
 {
   "$schema": "../document.schema.json",
   "$layout": "./layouts/docs.json",
-  "$description": "Every page of the documentation: one catch-all page serves each entry of the docs collection at /docs/<path>/ (the README of docs/ is /docs/). The title, the previous and next page and the sidebar come from the generated nav data; the table of contents comes from the page's own headings. The first level-1 heading of the Markdown that says the same as the title (ignoring case and punctuation) is the page's h1, wherever it stands (it keeps its anchor); every other level-1 heading is shown as an h2 so a page has exactly one h1. Text that came from frontmatter or headings is written with the HTML-escape idiom of the Jx parser (inert.ts), so `${...}` in a title, tag or heading stays text. Every derived value is a compiler-timed Function, so the page ships no JavaScript of its own.",
+  "$description": "Every page of the documentation: one catch-all page serves each entry of the docs collection at /docs/<path>/ (the README of docs/ is /docs/). The title, the previous and next page and the sidebar come from the generated nav data; the table of contents comes from the page's own headings. The first level-1 heading of the Markdown that says the same as the title (ignoring case and punctuation) is the page's h1, wherever it stands (it keeps its anchor); every other level-1 heading is shown as an h2 so a page has exactly one h1. Text that came from frontmatter or headings is written with the HTML-escape idiom of the Jx parser (inert.ts), so `${...}` in a title, tag or heading stays text. The <title> is the one place Jx writes text as it is (every attribute and text node it escapes itself), so the page hands it the title already escaped (headTitle): a title that holds `</title>` stays text instead of ending the element. Every derived value is a compiler-timed Function, so the page ships no JavaScript of its own.",
   "$paths": {
     "contentType": "docs"
   },
-  "title": "${state.pageTitle}",
+  "title": "${state.headTitle}",
   "state": {
     "page": {
       "$prototype": "ContentEntry",
@@ -31,6 +31,11 @@
       "$prototype": "Function",
       "timing": "compiler",
       "body": "return state.pageTitle;"
+    },
+    "headTitle": {
+      "$prototype": "Function",
+      "timing": "compiler",
+      "body": "return String(state.pageTitle).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');"
     },
     "lede": {
       "$prototype": "Function",
