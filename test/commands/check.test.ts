@@ -276,7 +276,7 @@ describe("docusystem check --ci", () => {
     await check(["--ci"], { GITHUB_STEP_SUMMARY: summary });
     const markdown = readFileSync(summary, "utf8");
     expect(markdown).toContain("failed");
-    expect(markdown).toMatch(/- @avunu\/docusystem 0\.0\.0, (node|bun) \d/);
+    expect(markdown).toMatch(/- @avunu\/docusystem \d+\.\d+\.\d+(-[\w.]+)?, (node|bun) \d/);
   });
 
   test("annotations (byte for byte): the build's, the contrast gate's and the crawl's", async () => {
