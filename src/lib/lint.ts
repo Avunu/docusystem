@@ -263,9 +263,12 @@ export function lintDocs(docsDir: string, o: { repoRoot?: string } = {}): LintIs
 }
 
 /**
- * `file:line message`, the file as the repository shows it: `prefix` is the Markdown folder's name
- * (`docs` unless the project keeps its documentation elsewhere).
+ * `file:line message`, the file as the repository shows it: `prefix` is the Markdown folder relative
+ * to the repository root, `/`-separated (`docs` unless the project keeps its documentation elsewhere;
+ * "" or "." when the repository root itself is the Markdown folder, so the file is shown bare).
  */
 export function formatIssue(issue: LintIssue, o: { prefix?: string } = {}): string {
-  return `${o.prefix ?? "docs"}/${issue.file}:${issue.line}  ${issue.message}`;
+  const folder = o.prefix ?? "docs";
+  const where = folder === "" || folder === "." ? issue.file : `${folder}/${issue.file}`;
+  return `${where}:${issue.line}  ${issue.message}`;
 }

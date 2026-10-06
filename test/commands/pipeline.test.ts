@@ -750,6 +750,41 @@ describe("--ci annotations (byte for byte)", () => {
     expect(commands.some((line) => line.includes("two pages share"))).toBe(false);
   });
 
+  test("a Markdown folder that is not docs/ is named by the printed line and by the annotation alike", async () => {
+    // "docs": "../documentation": GitHub can attach an annotation only to a file that exists
+    const world = makeWorld();
+    world.paths.docsDir = join(world.dir, "documentation");
+    world.lint = [
+      { file: "café.md", line: 9, level: "error", rule: "footnote", message: "Footnotes." },
+      { file: "guide/x.md", line: 2, level: "warning", rule: "task-list", message: "Tasks." },
+    ];
+    world.stage = {
+      skipped: [{ path: "link.md", reason: "a symbolic link outside the repository" }],
+    };
+    const { out, err } = await run(world, { strict: true, ci: true });
+    expect(err).toContain("lint: error: documentation/café.md:9  Footnotes.");
+    expect(err).toContain("lint: warning: documentation/guide/x.md:2  Tasks.");
+    expect(out.filter((line) => line.startsWith("::"))).toEqual([
+      "::error file=documentation/link.md,title=stage::documentation/link.md is a symbolic link outside the repository: not published",
+      "::error file=documentation/café.md,line=9,title=lint::Footnotes.",
+      "::warning file=documentation/guide/x.md,line=2,title=lint::Tasks.",
+    ]);
+    expect([...out, ...err].filter((line) => line.includes("docs/"))).toEqual([]);
+  });
+
+  test("the Markdown folder, relative to the repository, is what the navigation is told", async () => {
+    const world = makeWorld();
+    world.paths.docsDir = join(world.dir, "documentation");
+    const asked: unknown[] = [];
+    const writeNav = world.deps.writeNav;
+    world.deps.writeNav = (paths, config, o) => {
+      asked.push(o);
+      return writeNav(paths, config, o);
+    };
+    await run(world, { strict: true });
+    expect(asked).toEqual([{ folder: "documentation" }]);
+  });
+
   test("annotations are on standard output with the rest of the progress, and absent without ci", async () => {
     const world = makeWorld();
     world.lint = [{ file: "x.md", line: 1, level: "error", rule: "footnote", message: "m" }];

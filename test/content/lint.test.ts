@@ -154,6 +154,13 @@ test("formatIssue names the Markdown folder when it is not docs/", () => {
   const issue = { file: "a.md", line: 2, level: "error", rule: "footnote", message: "m" } as const;
   expect(formatIssue(issue)).toBe("docs/a.md:2  m");
   expect(formatIssue(issue, { prefix: "documentation" })).toBe("documentation/a.md:2  m");
+  expect(formatIssue(issue, { prefix: "guide/book" })).toBe("guide/book/a.md:2  m");
+});
+
+test("formatIssue shows the bare file when the repository root is the Markdown folder", () => {
+  const issue = { file: "a.md", line: 2, level: "error", rule: "footnote", message: "m" } as const;
+  expect(formatIssue(issue, { prefix: "" })).toBe("a.md:2  m");
+  expect(formatIssue(issue, { prefix: "." })).toBe("a.md:2  m");
 });
 
 test("a page whose frontmatter is not valid YAML is an error at the line of the problem", () => {

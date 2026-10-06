@@ -374,13 +374,13 @@ export async function runPipelineWith(
     for (const issue of issues) {
       const isError = issue.level === "error";
       const level = isError && strict ? "error" : "warning";
-      error(`lint: ${level}: ${deps.formatIssue(issue)}`);
+      error(`lint: ${level}: ${deps.formatIssue(issue, { prefix: docsLabel })}`);
       if (isError) documentProblems++;
       record(level, "lint", issue.message, { file: docsFile(issue.file), line: issue.line });
     }
 
     // ---- step 7: nav ----
-    const written = deps.writeNav(paths, config);
+    const written = deps.writeNav(paths, config, { folder: docsLabel });
     const { nav } = written;
     for (const warning of written.warnings) warn("nav", warning);
     log(`nav: ${written.pages} page(s)`);
