@@ -6,6 +6,8 @@ import { type Dirent, existsSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { readBundledCatalog } from "./catalog.js";
 import { ConfigError, pathsFor, readConfig } from "./config.js";
+import { sha256 } from "./fsutil.js";
+import { packageRoot } from "./package-info.js";
 import type { DocsConfig, Paths } from "./types.js";
 
 const flat = (slug: string): string => slug.toLowerCase().replaceAll("_", "-");
@@ -31,6 +33,9 @@ export function checkSlug(
     warning: `slug "${slug}" is not in the project catalog, so the project switcher will not mark this project as the current one. Add the project to the avunu.net catalog first.`,
   };
 }
+
+/** The earlier starter's configuration file, which `docusystem.config.json` replaced. */
+export const LEGACY_CONFIG_FILE = "docs.config.json";
 
 /** What the starter copied into the site folder, and what to do about each; none of it is read. */
 const LEFTOVERS: Array<{ name: string; advice: string }> = [
@@ -58,7 +63,103 @@ const LEFTOVERS: Array<{ name: string; advice: string }> = [
     name: "scripts",
     advice: "docusystem runs the build itself: delete this folder",
   },
+  {
+    name: "data",
+    advice:
+      "The project catalog is bundled in the package (a release refreshes it): delete this folder",
+  },
+  {
+    name: LEGACY_CONFIG_FILE,
+    advice:
+      "The configuration is docusystem.config.json now, and `docusystem init` carries the values over: delete this file once docusystem.config.json has them",
+  },
+  {
+    name: "README.md",
+    advice:
+      "It describes scripts that no longer exist, and the package's own documentation replaces it: delete this file",
+  },
 ];
+
+/** A leftover of the copied starter in the site folder (2.4 of the decision record). */
+export interface Leftover {
+  /** The entry of the site folder, without a trailing slash: `components`, `project.json`, `public`. */
+  name: string;
+  /** What to do about it. */
+  advice: string;
+  /** The warning `check` prints; it starts with the entry as an author writes it (`components/`). */
+  message: string;
+}
+
+/** An entry of the site folder as an author writes it: a folder with a trailing slash. */
+export const entryName = (name: string): string => (name.includes(".") ? name : `${name}/`);
+
+/**
+ * The files below `<site>/public` that are byte for byte the package's own file of the same path:
+ * what the starter's `public/` (its fonts, brand marks, favicon and `.nojekyll`) is when it was copied
+ * into a shell. A real `public/` holds files the package does not have, or files that differ. Symbolic
+ * links are not followed and nothing unreadable is an error: this only informs a warning.
+ */
+function copiesOfPackagePublic(sitePublic: string, packagePublic: string): string[] {
+  const copies: string[] = [];
+  const visit = (dir: string, prefix: string): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const rel = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) visit(join(dir, entry.name), `${rel}/`);
+      else if (entry.isFile()) {
+        const ours = join(packagePublic, ...rel.split("/"));
+        try {
+          if (existsSync(ours) && sha256(join(dir, entry.name)) === sha256(ours)) copies.push(rel);
+        } catch {
+          // unreadable: not a copy we can prove
+        }
+      }
+    }
+  };
+  visit(sitePublic, "");
+  return copies.sort();
+}
+
+/**
+ * What the copied starter left in the site folder (2.4 of the decision record), in a fixed order:
+ * `components/`, `layouts/`, `pages/`, `project.json`, `scripts/`, `data/`, `docs.config.json`,
+ * `README.md`, then `public/` when it holds copies of the package's own files (a `public/` that is a
+ * shell's own is not a leftover, rung 2 of the ladder). Reads only names, and the bytes of `public/`
+ * files that the package also has. `siteSource` is the package's `site/` folder, for tests.
+ */
+export function starterLeftovers(siteDir: string, o: { siteSource?: string } = {}): Leftover[] {
+  const found: Leftover[] = LEFTOVERS.filter(({ name }) => existsSync(join(siteDir, name))).map(
+    ({ name, advice }) => ({
+      name,
+      advice,
+      message: `${entryName(name)} in the site folder is ignored: it looks like a leftover of the copied starter. ${advice}.`,
+    }),
+  );
+  const copies = copiesOfPackagePublic(
+    join(siteDir, "public"),
+    join(o.siteSource ?? join(packageRoot, "site"), "public"),
+  );
+  if (copies.length > 0) {
+    const cname = existsSync(join(siteDir, "public", "CNAME"));
+    const advice =
+      "Delete the folder, or keep only the files you added or changed on purpose" +
+      (cname ? "; public/CNAME is not allowed either, it is generated from `domain`" : "");
+    found.push({
+      name: "public",
+      advice,
+      message:
+        `public/ in the site folder holds ${copies.length} file${copies.length === 1 ? "" : "s"} identical to the package's own ` +
+        `(${copies.slice(0, 3).join(", ")}${copies.length > 3 ? ", ..." : ""}): it looks like a leftover of the copied starter. ` +
+        `They replace the package's files on every build and do not follow package updates. ${advice}.`,
+    });
+  }
+  return found;
+}
 
 /** A path inside the repository as the author writes it: relative, `/`-separated, `.` for the root. */
 const shown = (repoRoot: string, path: string): string =>
@@ -95,7 +196,10 @@ function homeProblem(dir: string, docs: string): string | null {
  * one) and the site folder for starter leftovers (warnings). `config` and `paths` are present when they
  * could be made, even if errors followed. Nothing is written.
  */
-export function preflight(siteDir: string): {
+export function preflight(
+  siteDir: string,
+  o: { siteSource?: string } = {},
+): {
   config?: DocsConfig;
   paths?: Paths;
   errors: string[];
@@ -132,13 +236,7 @@ export function preflight(siteDir: string): {
     errors.push((error as Error).message);
   }
 
-  for (const { name, advice } of LEFTOVERS) {
-    if (existsSync(join(paths.siteDir, name))) {
-      warnings.push(
-        `${name}${name.includes(".") ? "" : "/"} in the site folder is ignored: it looks like a leftover of the copied starter. ${advice}.`,
-      );
-    }
-  }
+  for (const leftover of starterLeftovers(paths.siteDir, o)) warnings.push(leftover.message);
 
   return { config, paths, errors, warnings };
 }

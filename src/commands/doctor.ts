@@ -23,7 +23,7 @@ import { isInside } from "../lib/fsutil.js";
 import { hasJxFragment, JX_FRAGMENT, overrideFindings } from "../lib/overrides.js";
 import { major, REPOSITORY, version } from "../lib/package-info.js";
 import { COMMIT } from "../lib/pin.js";
-import { checkSlug } from "../lib/preflight.js";
+import { checkSlug, starterLeftovers } from "../lib/preflight.js";
 import type { DocsConfig, Finding } from "../lib/types.js";
 import {
   folderGlob,
@@ -41,9 +41,6 @@ const posix = (path: string): string => path.split(sep).join("/");
 
 /** The files of the Markdown folder that make a home page. */
 const HOME_PAGES = ["README.md", "readme.md", "index.md"];
-
-/** Folders and files of the copied starter that a shell does not have (2.4). */
-const STARTER_LEFTOVERS = ["components", "layouts", "pages", "project.json", "scripts"];
 
 /** Formatter configurations that may reformat the Markdown of `docs/`. */
 const FORMATTER_CONFIGS = [
@@ -519,12 +516,18 @@ function checkRepo(site: string, siteRel: string, repoRoot: string, add: Add): v
         `${siteRel}/package.json has ${starter.join(", ")}: it is a copy of the starter. The package picks and pins Jx and runs no install script, so a shell has neither. \`docusystem init --force\` rewrites it`,
       );
     }
+    if (record(manifest.engines).bun !== undefined) {
+      add(
+        "warning",
+        `${siteRel}/package.json has an engines.bun entry: it is the starter's, which needed Bun. The shell runs on Node 22.19.0 or newer (and on Bun); delete the entry (\`docusystem init --force\` removes it)`,
+      );
+    }
   }
-  const leftovers = STARTER_LEFTOVERS.filter((name) => existsSync(join(site, name)));
+  const leftovers = starterLeftovers(site).map((leftover) => leftover.name);
   if (leftovers.length > 0) {
     add(
       "warning",
-      `${siteRel}/ has ${leftovers.join(", ")}: leftovers of the copied starter. The package owns components, layouts, pages and the project file; remove them (an intended change belongs in overrides/)`,
+      `${siteRel}/ has ${leftovers.join(", ")}: leftovers of the copied starter. The package owns the components, layouts, pages, project file, fonts and catalog and runs the build itself, and the configuration is docusystem.config.json now; remove them (an intended change belongs in overrides/)`,
     );
   }
   const formatters = FORMATTER_CONFIGS.filter((name) => existsSync(join(repoRoot, name)));

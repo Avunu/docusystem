@@ -35,7 +35,7 @@ Exit 3, naming the process id. Two builds of one site would write the same `.doc
 - A workflow that differs from its scaffold, including a copy of the earlier starter's long workflow.
 - A `package.json` with a `postinstall` script, or with a dependency on any `@jxsuite/*` package. That is a copy of the earlier starter, and the new shell has neither.
 
-Read what is there, then pass `--force` to let `init` replace it. `--dry-run` shows the diff first.
+Read what is there, then pass `--force` to let `init` replace it. `--dry-run` shows the diff first. For a repository that copied the starter's `docs-site/`, the whole path is in [Migrating from the earlier starter](migrating-from-the-starter.md).
 
 ## "K document problem(s) above fail the build"
 
@@ -110,7 +110,15 @@ The files that `init` writes are meant to pass the repository's own format check
 
 ## A leftover from the starter
 
-`preflight` warns when the site folder contains `components/`, `layouts/`, `pages/`, `project.json` or `scripts/`, which are leftovers of an earlier copy-the-template starter. Delete them: the package supplies all of them. If you want to change one, use [an override](overrides.md).
+`preflight` warns when the site folder contains `components/`, `layouts/`, `pages/`, `project.json`, `scripts/`, `data/`, `docs.config.json`, `README.md`, or a `public/` that holds copies of the package's own files (its fonts, brand marks and favicon), which are leftovers of an earlier copy-the-template starter. Delete them: the package supplies all of them, and the configuration is `docusystem.config.json` now. If you want to change one, use [an override](overrides.md). A `public/` of your own (a logo, an og image) is not a leftover. `doctor` lists the leftovers in one warning, adds a warning for the starter's `engines.bun` entry and an error for `bun.lock`, and `init` prints the same list. The steps are in [Migrating from the earlier starter](migrating-from-the-starter.md).
+
+## `public/CNAME` is not allowed
+
+```text
+assemble: public/CNAME is not allowed: the file is generated from `domain` in docusystem.config.json, delete it
+```
+
+The starter committed a `CNAME`; the package writes it from `domain` on every build. Delete `docs-site/public/CNAME`. If the starter's whole `public/` folder is still there, `check` also warns that it holds copies of the package's own files and, because each one replaces the package's file, prints an `overrides:` line for every copy: delete the folder unless it holds files you added.
 
 ## Looking inside a build
 
