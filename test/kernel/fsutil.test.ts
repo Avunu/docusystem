@@ -21,7 +21,15 @@ import {
   walkFiles,
   writeJson,
 } from "../../src/lib/fsutil.js";
-import { at, listTree, readTree, tempDir, writeTree } from "../support/index.js";
+import {
+  WRITABLE_FILE_MODE,
+  at,
+  isWindows,
+  listTree,
+  readTree,
+  tempDir,
+  writeTree,
+} from "../support/index.js";
 
 type Spec = Record<string, string | { symlink: string } | { dir: true }>;
 
@@ -364,7 +372,10 @@ describe("walkFiles", () => {
     });
   });
 
-  test("a special file is skipped and reported", () => {
+  // A named pipe cannot be made in a folder on Windows (the `mkfifo` that Git for Windows puts on the
+  // PATH only emulates one with a `.lnk` file, which is a regular file), and no other special file can
+  // be made there from a test, so there is nothing to skip over.
+  test.skipIf(isWindows)("a special file is skipped and reported", () => {
     const { repo, docs } = layout({ "docs/ok.md": "ok" });
     const made = spawnSync("mkfifo", [join(docs, "pipe")]);
     if (made.status !== 0) return; // no mkfifo on this machine
@@ -382,7 +393,7 @@ describe("copyFile", () => {
     chmodSync(join(dir, "from.bin"), 0o444);
     copyFile(join(dir, "from.bin"), at(dir, "a/b/to.bin"));
     expect([...readFileSync(at(dir, "a/b/to.bin"))]).toEqual([0, 1, 2, 255]);
-    expect(lstatSync(at(dir, "a/b/to.bin")).mode & 0o777).toBe(0o644);
+    expect(lstatSync(at(dir, "a/b/to.bin")).mode & 0o777).toBe(WRITABLE_FILE_MODE);
     // ... so that the next run can replace it
     copyFile(join(dir, "from.bin"), at(dir, "a/b/to.bin"));
     expect(readFileSync(at(dir, "a/b/to.bin")).length).toBe(4);
@@ -556,7 +567,7 @@ describe("replaceDir", () => {
     replaceDir(at(dir, "from"), at(dir, "to"));
     expect(readTree(at(dir, "to"))).toEqual({ "index.html": "new", "assets/app.js": "js" });
     expect(statSync(at(dir, "to/empty")).isDirectory()).toBe(true);
-    expect(statSync(at(dir, "to/index.html")).mode & 0o777).toBe(0o644);
+    expect(statSync(at(dir, "to/index.html")).mode & 0o777).toBe(WRITABLE_FILE_MODE);
     // `from` is copied, not moved
     expect(readTree(at(dir, "from"))).toEqual({ "index.html": "new", "assets/app.js": "js" });
     expect(listTree(dir).filter((p) => /\.(tmp|old)-/.test(p))).toEqual([]);
@@ -648,5 +659,55 @@ describe("sha256", () => {
       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     );
     expect(() => sha256(join(dir, "missing"))).toThrow();
+  });
+});
+
+// The links that the package writes itself are junctions on Windows (`linkJxPackages`), and a junction
+// needs no privilege, so it is the one directory link that every Windows account can make. Node reports
+// a junction as a symbolic link, and the policies above must hold for it. On Linux and macOS the type
+// is ignored and these are ordinary directory links.
+describe("a junction, the directory link of Windows", () => {
+  const junction = (target: string, link: string): void => symlinkSync(target, link, "junction");
+
+  test("walkFiles follows one inside the repository, refuses one that leaves it, and cuts one that leads back", () => {
+    const { repo, docs, outside } = layout({
+      "docs/real.md": "real",
+      "shared/one.md": "one",
+      ".git/config": "[remote] token",
+    });
+    junction(join(repo, "shared"), join(docs, "inside"));
+    junction(join(outside, "folder"), join(docs, "leak"));
+    junction(docs, join(docs, "loop"));
+    junction(join(repo, ".git"), join(docs, "git"));
+    expect(walkFiles(docs, { repoRoot: repo })).toEqual({
+      files: ["inside/one.md", "real.md"],
+      skipped: [
+        { path: "git", reason: "a symbolic link into .git" },
+        { path: "leak", reason: "a symbolic link outside the repository" },
+        { path: "loop", reason: "a symbolic link back to a folder that contains it (a cycle)" },
+      ],
+    });
+  });
+
+  test("removeInside removes one and leaves what it leads to, and refuses to go through one", () => {
+    const dir = tempDir();
+    writeTree(dir, { "outside/precious.txt": "precious", "site/keep.txt": "k" });
+    junction(at(dir, "outside"), at(dir, "site/dist"));
+    expect(() => removeInside(at(dir, "site/dist/precious.txt"), at(dir, "site"))).toThrow(
+      /symbolic link/,
+    );
+    removeInside(at(dir, "site/dist"), at(dir, "site"));
+    expect(existsSync(at(dir, "site/dist"))).toBe(false);
+    expect(readFileSync(at(dir, "outside/precious.txt"), "utf8")).toBe("precious");
+  });
+
+  test("ensureRealDir refuses one, and replaceDir copies no folder that holds one", () => {
+    const dir = tempDir();
+    writeTree(dir, { "elsewhere/x": "x", "from/index.html": "new" });
+    junction(at(dir, "elsewhere"), at(dir, "link"));
+    expect(() => ensureRealDir(at(dir, "link"))).toThrow(/symbolic link/);
+    junction(at(dir, "elsewhere"), at(dir, "from/linked"));
+    expect(() => replaceDir(at(dir, "from"), at(dir, "to"))).toThrow(/symbolic link/);
+    expect(existsSync(at(dir, "to"))).toBe(false);
   });
 });

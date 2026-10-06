@@ -190,9 +190,13 @@ jobs:
           LINKER: ${{ matrix.linker }}
         run: node scripts/test-pack.mjs --pm "$PM" --runtime "$RUNTIME" --linker "$LINKER" --workspace
 
-  # Row 9 of the matrix: informational. Windows is unsupported (junction links and path separators are
-  # untested); this finds path-separator bugs early. It is not in the `needs` of `ci`, and a failure
-  # here is reported as an annotation without failing the run.
+  # Row 9 of the matrix: the unit tests on Windows. Windows is unsupported for the CLI itself (nothing
+  # here builds a site on it); this finds path-separator and line-ending bugs early. The job is expected
+  # to pass: .gitattributes checks text out as LF and the tests are platform-aware (CONTRIBUTING.md,
+  # "Tests on Windows"). It is informational only because it is not in the `needs` of `ci` and
+  # `continue-on-error` reports a failure as an annotation without failing the run. To make it a required
+  # check: add `windows` to the `needs` of the `ci` job below, delete `continue-on-error` here, and change
+  # the assertions of test/workflows/ci.test.ts that pin both.
   windows:
     name: Unit tests on Windows (informational)
     runs-on: windows-latest

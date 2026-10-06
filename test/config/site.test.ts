@@ -1,6 +1,6 @@
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   CONFIG_FILE,
   ConfigError,
@@ -9,7 +9,7 @@ import {
   pathsFor,
   resolveBranch,
 } from "../../src/lib/config.js";
-import { at, git, initRepo, tempDir, writeTree } from "../support/index.js";
+import { at, escapeRegExp, git, initRepo, tempDir, writeTree } from "../support/index.js";
 import { GOOD, shell } from "./helpers.js";
 
 const CONFIG = JSON.stringify(GOOD);
@@ -65,7 +65,9 @@ describe("findSiteDir", () => {
   test("--site without a configuration says so, and points at ./docs-site when that is the site", () => {
     const { repo, site } = shell();
     expect(() => findSiteDir(".", repo)).toThrow(
-      new RegExp(`there is no ${CONFIG_FILE} in ${repo}.*the site folder is ${site}`),
+      new RegExp(
+        `there is no ${escapeRegExp(CONFIG_FILE)} in ${escapeRegExp(repo)}.*the site folder is ${escapeRegExp(site)}`,
+      ),
     );
     expect(() => findSiteDir("docs", repo)).toThrow(/there is no docusystem\.config\.json in /);
   });
@@ -117,9 +119,17 @@ describe("findRepoRoot", () => {
 
   test("a relative site folder is resolved against the current folder", () => {
     const { repo, site } = shell();
-    const relativeSite = relative(process.cwd(), site);
-    expect(isAbsolute(relativeSite)).toBe(false);
-    expect(findRepoRoot(relativeSite)).toBe(repo);
+    // The current folder is the one that holds the repository, as it would be for a person who is
+    // there. The real one would do on Linux and macOS, but not on Windows: a path from one drive to
+    // another cannot be relative, and the runner's temporary folder is not on the drive of the checkout.
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dirname(repo));
+    try {
+      const relativeSite = relative(process.cwd(), site);
+      expect(isAbsolute(relativeSite)).toBe(false);
+      expect(findRepoRoot(relativeSite)).toBe(repo);
+    } finally {
+      cwd.mockRestore();
+    }
   });
 });
 

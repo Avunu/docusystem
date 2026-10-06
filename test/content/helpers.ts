@@ -3,13 +3,13 @@
 // `pathsFor` is WP1's; this one is only for tests of modules that take a Paths).
 import { join } from "node:path";
 import type { Paths } from "../../src/lib/types.js";
-import { tempDir, writeTree, type TreeSpec } from "../support/index.js";
+import { canSymlink, tempDir, writeTree, type TreeSpec } from "../support/index.js";
 
 /**
- * Whether the tests that create symbolic links can run here. Windows is unsupported (7.4), and
- * directory links there need a privilege that most accounts lack (`EPERM` from `stat`).
+ * Whether the tests that create symbolic links can run here: everywhere, except on a Windows account
+ * that may not create them (see `canSymlink`). The windows-latest runner may.
  */
-export const symlinksWork = process.platform !== "win32";
+export const symlinksWork: boolean = canSymlink();
 
 /** A temporary folder holding `files` (path -> text, or a symlink entry); removed after the test. */
 export function makeTree(files: TreeSpec = {}): string {

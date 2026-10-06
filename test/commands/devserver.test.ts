@@ -13,7 +13,7 @@ import {
   type RebuildStatus,
   type StaticServer,
 } from "../../src/lib/devserver.js";
-import { tempDir, writeTree } from "../support/index.js";
+import { native, tempDir, writeTree } from "../support/index.js";
 
 const SITE: Record<string, string> = {
   "index.html": "<html><body><h1>Home</h1></body></html>",
@@ -88,27 +88,30 @@ describe("locate (GitHub Pages semantics)", () => {
 
 describe("isIgnoredChange", () => {
   const site = "/repo/docs-site";
+  // `fs.watch` reports a name with the platform's separator: `docs-site\\dist\\index.html` on Windows.
+  const ignored = (watched: string, name: string): boolean =>
+    isIgnoredChange(site, watched, native(name));
   test("the build's own output and the tools' folders are ignored, wherever the watch started", () => {
-    expect(isIgnoredChange(site, "/repo", "docs-site/dist/index.html")).toBe(true);
-    expect(isIgnoredChange(site, "/repo", "docs-site/dist.tmp-123/index.html")).toBe(true);
-    expect(isIgnoredChange(site, "/repo", "docs-site/dist.old-123")).toBe(true);
-    expect(isIgnoredChange(site, "/repo", "docs-site/.docusystem/site/pages/x.json")).toBe(true);
-    expect(isIgnoredChange(site, "/repo", ".git/index")).toBe(true);
-    expect(isIgnoredChange(site, "/repo", "node_modules/a/b.js")).toBe(true);
-    expect(isIgnoredChange(site, site, "dist")).toBe(true);
+    expect(ignored("/repo", "docs-site/dist/index.html")).toBe(true);
+    expect(ignored("/repo", "docs-site/dist.tmp-123/index.html")).toBe(true);
+    expect(ignored("/repo", "docs-site/dist.old-123")).toBe(true);
+    expect(ignored("/repo", "docs-site/.docusystem/site/pages/x.json")).toBe(true);
+    expect(ignored("/repo", ".git/index")).toBe(true);
+    expect(ignored("/repo", "node_modules/a/b.js")).toBe(true);
+    expect(ignored(site, "dist")).toBe(true);
   });
 
   test("Markdown, overrides and public files are not", () => {
-    expect(isIgnoredChange(site, "/repo/docs", "guide/x.md")).toBe(false);
-    expect(isIgnoredChange(site, "/repo", "docs/guide/x.md")).toBe(false);
-    expect(isIgnoredChange(site, `${site}/overrides`, "components/docs-footer.json")).toBe(false);
-    expect(isIgnoredChange(site, `${site}/public`, "favicon.svg")).toBe(false);
-    expect(isIgnoredChange(site, "/repo/docs", "distribution.md")).toBe(false);
+    expect(ignored("/repo/docs", "guide/x.md")).toBe(false);
+    expect(ignored("/repo", "docs/guide/x.md")).toBe(false);
+    expect(ignored(`${site}/overrides`, "components/docs-footer.json")).toBe(false);
+    expect(ignored(`${site}/public`, "favicon.svg")).toBe(false);
+    expect(ignored("/repo/docs", "distribution.md")).toBe(false);
   });
 
   test("editors' scratch files are ignored", () => {
     for (const name of ["x.md~", ".#x.md", "#x.md#", "x.md.swp", "x.md.swx", "4913", "x.md.tmp"]) {
-      expect(isIgnoredChange(site, "/repo/docs", name), name).toBe(true);
+      expect(ignored("/repo/docs", name), name).toBe(true);
     }
   });
 });

@@ -159,11 +159,31 @@ export function imageHint(output: string): string | null {
   );
 }
 
-/** A command line as a person would type it: a part with a space or a shell character is quoted. */
-export function shellCommand(parts: string[]): string {
+/** A word of a POSIX shell that needs no quoting. */
+const POSIX_BARE = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/**
+ * A word of a Windows command line that needs no quoting, in cmd.exe and in PowerShell alike: a path
+ * with backslashes, a drive colon and an 8.3 short name (`RUNNER~1`) is one word in both. Anything else
+ * is quoted, including what PowerShell reads as an operator (`,` `@`) and what cmd.exe expands (`%`).
+ */
+const WINDOWS_BARE = /^[A-Za-z0-9_+=:./\\~-]+$/;
+
+/**
+ * A command line as a person would type it: a part with a space or a shell character is quoted. The
+ * quoting is the platform's: single quotes for a POSIX shell, which cmd.exe does not understand, and
+ * double quotes on Windows (`platform` is a parameter so that both can be tested anywhere).
+ */
+export function shellCommand(
+  parts: string[],
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === "win32") {
+    return parts
+      .map((part) => (WINDOWS_BARE.test(part) ? part : `"${part.replaceAll('"', '\\"')}"`))
+      .join(" ");
+  }
   return parts
-    .map((part) =>
-      /^[A-Za-z0-9_@%+=:,./-]+$/.test(part) ? part : `'${part.replaceAll("'", `'\\''`)}'`,
-    )
+    .map((part) => (POSIX_BARE.test(part) ? part : `'${part.replaceAll("'", `'\\''`)}'`))
     .join(" ");
 }
