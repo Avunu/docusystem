@@ -123,6 +123,15 @@ describe("docusystem check", () => {
     expect(stdout).toBe("check: FAILED");
   });
 
+  test("a root that could not be assembled has no tokens: the gate does not run on a stale one", async () => {
+    world.assemblyErrors = ["overrides: overrides/components/sub/x.json is nested"];
+    const { code, stderr } = await check();
+    expect(code).toBe(1);
+    expect(stderr).toContain("overrides: overrides/components/sub/x.json is nested");
+    expect(stderr).not.toContain("contrast:");
+    expect(wp4.contrastFailures).not.toHaveBeenCalled();
+  });
+
   test("a color pair below its minimum fails the check and is named", async () => {
     const failure: Failure = { theme: "light", label: "action on page", ratio: 1.78, minimum: 4.5 };
     wp4.contrastFailures.mockReturnValue({ checked: 148, failures: [failure] });

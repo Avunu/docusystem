@@ -76,7 +76,8 @@ export async function run(ctx: CommandContext): Promise<number> {
   const paths: Paths | undefined = build.paths;
 
   // ---- step 15: contrast ----
-  if (build.assembly !== undefined && paths !== undefined) {
+  // Needs the root this run assembled; a root that could not be assembled has no tokens to read.
+  if (build.assembly !== undefined && build.assembly.errors.length === 0 && paths !== undefined) {
     let tokens: ReturnType<typeof readTokens> | undefined;
     try {
       tokens = readTokens(paths.root);
