@@ -1,0 +1,23 @@
+[
+  { "repo": "Avunu/automated_subscriptions" },
+  { "repo": "Avunu/avunu-odoo-addons", "init": ["--slug", "avunu-odoo-addons"] },
+  { "repo": "Avunu/carbon_frappe" },
+  { "repo": "Avunu/cloudflare_email_delivery" },
+  { "repo": "Avunu/cloudflare-email-relay", "init": ["--domain", "cloudflare-email.avunu.net"] },
+  { "repo": "Avunu/erpnext_cis_plus" },
+  { "repo": "Avunu/erpnext_taskview" },
+  { "repo": "Avunu/esign" },
+  { "repo": "Avunu/frappe-nix" },
+  { "repo": "Avunu/jailbreak" },
+  { "repo": "Avunu/mercury_integration" },
+  { "repo": "Avunu/messaging" },
+  { "repo": "Avunu/nixos-micro-desktop" },
+  { "repo": "Avunu/nixos-rclone" },
+  { "repo": "Avunu/odoo-nix" },
+  { "repo": "Avunu/postgrid_integration" },
+  { "repo": "Avunu/web_kiosk" },
+  { "repo": "Avunu/wordpress-cloudflare-email" },
+  { "repo": "Avunu/wordpress-jwt-auth" },
+  { "repo": "Avunu/wordpress-nix" },
+  { "repo": "Avunu/wp-cloud-files" }
+]
