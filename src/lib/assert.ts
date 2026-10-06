@@ -8,7 +8,8 @@
 // one as `ok`/`FAIL` (formatAssertion) and publishes nothing when one fails.
 //
 // The assertions read only `dist` (and the component files of the project root, to know which custom
-// elements are registered); they prove the output, not the code that made it.
+// elements are registered); they prove the output, not the code that made it. The last three, in
+// safety.ts, are the ones that keep a documentation pull request from running code on the site.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -22,6 +23,7 @@ import {
   strayExpression,
   visibleMarkup,
 } from "./links.js";
+import { safetyAssertions } from "./safety.js";
 import type { Assertion } from "./types.js";
 
 const pass = (message: string): Assertion => ({ ok: true, message });
@@ -441,6 +443,9 @@ export function assertBuild(
       ),
     );
   }
+
+  // Nothing in the pages runs somebody else's code, and every page says so to the browser (safety.ts).
+  out.push(...safetyAssertions(dist, files, pages));
   return out;
 }
 

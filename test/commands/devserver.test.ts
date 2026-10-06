@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   RELOAD_PATH,
+  RELOAD_SCRIPT_PATH,
   isIgnoredChange,
   locate,
   startDev,
@@ -164,7 +165,7 @@ function openStream(port: number): Promise<{ events: string[]; close: () => void
   });
 }
 
-const SNIPPET = `<script>(()=>{const e=new EventSource("${RELOAD_PATH}");e.addEventListener("reload",()=>location.reload());})()</script>`;
+const SNIPPET = `<script src="${RELOAD_SCRIPT_PATH}"></script>`;
 
 const until = async (condition: () => boolean, ms = 5000): Promise<void> => {
   const end = Date.now() + ms;
@@ -222,6 +223,15 @@ describe("startServer", () => {
     expect((await fetchRaw(port, "/no-body.html")).body).toBe(
       `<p>an html file without a body tag</p>${SNIPPET}`,
     );
+  });
+
+  test("the reload script is a file of its own: pages refuse inline scripts the build did not write", async () => {
+    const port = await start();
+    const script = await fetchRaw(port, RELOAD_SCRIPT_PATH);
+    expect(script.status).toBe(200);
+    expect(script.headers["content-type"]).toBe("text/javascript; charset=utf-8");
+    expect(script.body).toContain(`new EventSource("${RELOAD_PATH}")`);
+    expect((await fetchRaw(port, "/docs/a/")).body).not.toMatch(/<script>/);
   });
 
   test("non-HTML files are not touched", async () => {

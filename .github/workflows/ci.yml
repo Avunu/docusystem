@@ -216,10 +216,10 @@ jobs:
         run: npm test -- --project unit
 
   # The browser suites (verify/): axe on every page at three widths in both colour schemes plus the open
-  # overlays, the navigation drawer, the project switcher and the code fences. They run on the example's
-  # built site, which is the assembled Jx root's dist (it sits beside the data/ and docusystem.config.json
-  # the suites read). `shots.ts` leaves screenshots at 1440, 768 and 390 pixels in both schemes for a
-  # human to look at; there is no pixel diff.
+  # overlays, the navigation drawer, the project switcher, the code fences and the content security
+  # policy. They run on the example's built site, which is the assembled Jx root's dist (it sits beside
+  # the data/ and docusystem.config.json the suites read). `shots.ts` leaves screenshots at 1440, 768
+  # and 390 pixels in both schemes for a human to look at; there is no pixel diff.
   verify:
     name: Accessibility and behaviour in Chrome
     runs-on: ubuntu-latest
@@ -250,13 +250,14 @@ jobs:
       - name: Install the browser suites
         working-directory: verify
         run: bun install --frozen-lockfile
-      - name: axe (WCAG 2.1 A and AA), the navigation drawer, the code fences
+      - name: axe (WCAG 2.1 A and AA), the navigation drawer, the code fences, the content security policy
         working-directory: verify
         run: |
           root="$RUNNER_TEMP/consumer/docs-site/.docusystem/site"
           bun axe.ts "$root/dist"
           bun drawer.ts "$root/dist" /docs/guide/install/
           bun fences.ts "$root"
+          bun csp.ts "$root/dist"
       # The "You are here" state of the switcher exists only when the project's slug is in the catalog,
       # so the example is rebuilt under a real catalog slug first.
       - name: The project switcher, under a slug of the catalog

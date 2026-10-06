@@ -32,6 +32,9 @@ const A = {
   copies: 15,
   switcher: 16,
   routes: 17,
+  runsCode: 18,
+  activeFiles: 19,
+  policy: 20,
 } as const;
 
 const DOMAIN = "docs.example.test";
@@ -46,7 +49,7 @@ const failing = (site: Site, routes: number | null = PAGES): number[] =>
 describe("the passing fixture", () => {
   test("passes every assertion, in the order of the record", () => {
     const results = run(copySite());
-    expect(results).toHaveLength(18);
+    expect(results).toHaveLength(21);
     expect(results.filter((a) => !a.ok)).toEqual([]);
     expect(results.map((a) => a.message)).toEqual([
       "3 components emitted as components/<tag>.js",
@@ -67,12 +70,15 @@ describe("the passing fixture", () => {
       "no Markdown copies of pages (index.md beside index.html)",
       "the project switcher is pre-rendered from the catalog (1 project in 1 group)",
       "4 pages built (4 expected)",
+      "no page holds a script, an event handler, a javascript: address or an embedded page",
+      "every file published from the Markdown folder is a picture, a document or data, none runs",
+      "4 pages carry a Content-Security-Policy that blocks inline handlers, javascript: addresses and scripts the build did not write",
     ]);
   });
 
   test("a route count of null leaves the count unchecked and everything else as it was", () => {
     const results = run(copySite(), null);
-    expect(results).toHaveLength(18 - 1);
+    expect(results).toHaveLength(21 - 1);
     expect(results.every((a) => a.ok)).toBe(true);
   });
 
@@ -171,7 +177,8 @@ const CASES: Case[] = [
           '<title>Evil </title><script>document.documentElement.setAttribute("x","1")</script> · Docs</title>',
         ),
       ),
-    fails: [A.title],
+    // The forged script is also a script that the page's policy does not name: caught twice.
+    fails: [A.title, A.policy],
     says: /the <title> ends early.*\/docs\/guide\//,
   },
   {
@@ -184,7 +191,8 @@ const CASES: Case[] = [
           "<title>Evil </title></head><body><img src=x onerror=alert(1)><title>y</title>",
         ),
       ),
-    fails: [A.title],
+    // The forged event handler is also markup that runs code: caught twice.
+    fails: [A.title, A.runsCode],
   },
   {
     name: "a title that closes the element in capitals, with a space or a slash",
@@ -192,7 +200,7 @@ const CASES: Case[] = [
       edit(guide(s), (t) =>
         swap(t, /<title>[^<]*<\/title>/, "<title>a</TITLE ><script>x</script></title/>"),
       ),
-    fails: [A.title],
+    fails: [A.title, A.policy],
   },
   {
     name: "a template expression reached the page unevaluated",
@@ -418,6 +426,65 @@ const CASES: Case[] = [
     routes: PAGES + 3,
     fails: [A.routes],
     says: /4 pages built, 7 expected: Jx dropped 3 routes/,
+  },
+  {
+    name: "raw HTML in the Markdown came out with an event handler",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, "<pre>", '<img src="x.png" onerror="alert(1)"><pre>')),
+    fails: [A.runsCode],
+    says: /\/docs\/guide\/ \(<img onerror="alert\(1\)">\)/,
+  },
+  {
+    name: "a link in the Markdown came out as a javascript: address",
+    change: (s) =>
+      edit(guide(s), (t) =>
+        swap(t, "<pre>", '<p><a href=" JaVa&#x09;Script:alert(1)">x</a></p><pre>'),
+      ),
+    fails: [A.runsCode],
+    says: /<a href="JaVa\s?Script:alert\(1\)">/i,
+  },
+  {
+    name: "a :script directive came out as a script in the page content",
+    change: (s) => edit(guide(s), (t) => swap(t, "<pre>", "<p><script>alert(1)</script></p><pre>")),
+    fails: [A.runsCode, A.policy],
+    says: /<script> in the page content/,
+  },
+  {
+    name: "an iframe stands in a page",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, "<pre>", '<iframe src="https://example.com/"></iframe><pre>')),
+    fails: [A.runsCode],
+    says: /<iframe>/,
+  },
+  {
+    name: "a script file is linked from the Markdown",
+    change: (s) => put(dist(s, "content/docs/guide/x.js"), "alert(1)"),
+    fails: [A.activeFiles],
+    says: /\/content\/docs\/guide\/x\.js \(a \.js file/,
+  },
+  {
+    name: "an SVG with an event handler is linked from the Markdown",
+    change: (s) =>
+      put(
+        dist(s, "content/docs/diagram.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><rect/></svg>',
+      ),
+    fails: [A.activeFiles],
+    says: /diagram\.svg \(onload="alert\(1\)"\)/,
+  },
+  {
+    name: "a page has no Content-Security-Policy",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, /<meta http-equiv="Content-Security-Policy"[^>]*>/, "")),
+    fails: [A.policy],
+    says: /\/docs\/guide\/ \(it has no Content-Security-Policy meta\)/,
+  },
+  {
+    name: "a page's Content-Security-Policy lets inline scripts run",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, "script-src 'self'", "script-src 'self' 'unsafe-inline'")),
+    fails: [A.policy],
+    says: /script-src allows 'unsafe-inline'/,
   },
 ];
 

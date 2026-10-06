@@ -23,10 +23,11 @@ In scope:
 - The published npm package `@avunu/docusystem`, including the CLI and the files it writes into a project.
 - The reusable workflows `docs-build.yml` and `docs-deploy.yml` in `.github/workflows/`: for example a way to run code with the deploy job's permissions, to publish to a repository's Pages site from a pull request, or to read a secret.
 - This repository's release pipeline.
+- A way for documentation Markdown (raw HTML, a link, an image, a `:name{...}` directive, a `${...}` or a file that a page links to) to run code in the build job, or in a reader's browser on a published site, past the staging, the lint, the output assertions and the Content-Security-Policy described below.
 
 Out of scope:
 
-- Vulnerabilities in a documentation site that come from its own configuration, overrides or workflows. A pull request can change those and run code in the build job by design; that job has a read-only token and no secrets. Markdown is not in this list: a page is data, and a way to make a page run code in the build is in scope.
+- Vulnerabilities in a documentation site that come from its own configuration, overrides or workflows. A pull request can change those and run code in the build job by design; that job has a read-only token and no secrets. Markdown is not in this list: a page is data in the build, and untrusted on the published site (see the two design notes below about Markdown).
 - Vulnerabilities in Jx itself. Report those to [jxsuite/jx](https://github.com/jxsuite/jx/security).
 - Denial of service by volume.
 
@@ -35,8 +36,9 @@ Out of scope:
 These are the properties the system intends to have. A way to break one is a vulnerability.
 
 - The build job of the reusable workflow has `contents: read` and no secrets. The deploy job executes no project code. No workflow that a pull request can trigger asks for `pages: write` or `id-token: write`.
+- A page of Markdown is data in the build: a `${...}` in it, in any spelling, never reaches Jx as a template, so a pull request that changes only `docs/` cannot run code in the build job.
+- Markdown is not trusted on the published site, which is served from the project's own domain (same-site with the client portal). Raw HTML may use only text, table and image elements, no event-handler or `style` attribute, and addresses may only be http, https, mailto, tel or relative: `docusystem lint` refuses the rest with the file and line, the output assertions refuse any built page that holds a script, an event handler, an unsafe address or an embedded page, and any published file that would run when opened (HTML, script, active SVG or XML), in every mode, and every page carries a Content-Security-Policy meta that names the page's own inline scripts by hash and refuses all others. A way to get a script to run in a reader's browser from a documentation pull request is a vulnerability. Not covered: pull requests that change `docs-site/` (the config, overrides, `public/`), which are reviewed as code.
 - Callers pin the reusable workflows by commit, and every action in them is pinned by commit.
-- A page of Markdown is data: a `${...}` in it, in any spelling, never reaches Jx as a template, so a pull request that changes only `docs/` cannot run code in the build job.
 - The release pipeline publishes with an OIDC token that only one job can read, and that job runs no code of this repository or its dependencies: it publishes a tarball that a job without the token built.
 - No install script runs for consumers, the package makes no network access during a build unless `--refresh-catalog` is passed, and the CLI deletes only paths inside the site folder's `.docusystem/` and `dist/`.
 - Files that are published are copies; a symbolic link that leaves the repository is skipped, never followed.

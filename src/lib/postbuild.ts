@@ -22,12 +22,15 @@
 //   - search-index.json: a page with no `title` in its frontmatter is indexed under its file name
 //     ("README"); the index is given the title the page shows.
 //   - code blocks whose language is not highlighted are reported (a warning, never a failure).
+//   - Content-Security-Policy: a meta that names the page's inline scripts by hash and refuses every
+//     other inline script, event handler and javascript: address (csp.ts).
 //
 // What this step does not do: check the result. That is assert.ts (step 12), which asserts on the
 // published files and not on what this module believes it did.
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { isInside, removeInside } from "./fsutil.js";
+import { withContentSecurityPolicy } from "./csp.js";
 import { restoreData, restoreText } from "./inert.js";
 import { distFiles, fileFor, htmlPages, routeOfFile } from "./links.js";
 import { publishNotFoundPage, tidyPage } from "./tidy.js";
@@ -331,6 +334,8 @@ export function runPostbuild(
       after = fixed;
       if (!isNoindex(after)) indexable.push(route);
     }
+    // Last, so that the policy names the scripts the page ends up with.
+    after = withContentSecurityPolicy(after);
     if (after !== before) writeFileSync(file, after);
   }
   writeFileSync(join(dist, "sitemap.xml"), sitemapXml(site, indexable));

@@ -31,7 +31,7 @@ The list is closed. A project that needs more has an [override](guide/overrides.
 ## What a project gets
 
 - **A site that follows the package.** A new release arrives as one Dependabot pull request; nothing is copied between repositories.
-- **Checks that fail the build.** In CI a broken link, a missing image, Markdown the site cannot show, a missing component or an empty link stops the build. See [Writing documentation](guide/writing-docs.md).
+- **Checks that fail the build.** In CI a broken link, a missing image, Markdown the site cannot show, a missing component, an empty link, or a script, event handler or `javascript:` address in the Markdown stops the build, and every page carries a Content-Security-Policy. See [Writing documentation](guide/writing-docs.md).
 - **A site that is the same everywhere.** The project switcher lists the other Avunu projects, grouped by platform, and works offline from a catalog bundled in the package.
 - **Customization with a visible cost.** Design tokens can be overridden in the config file and checked for contrast; any file can be replaced, and every replacement is printed on every build. See [Customizing](guide/overrides.md).
 - **Nothing to run at install.** No install script runs, no network is used during a build (unless you ask for a fresh catalog), and the Jx packages are pinned exactly inside the package.

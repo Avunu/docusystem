@@ -12,6 +12,7 @@ bun run.ts --tarball ../avunu-docusystem-0.1.0.tgz --out /tmp/verify
 | Suite         | What it proves                                                                                                                                                                  |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `axe.ts`      | WCAG 2.1 A and AA with axe-core on every page at three widths in both colour schemes, and again with the project list, the search palette and the drawer open: zero violations. |
+| `csp.ts`      | The Content-Security-Policy of the pages from both sides: the site works under it (search, switcher, theme, drawer, copy buttons: no violation, no script error), and markup injected into a built page (event handlers, a javascript: link, inline and foreign scripts, a frame, a form, a new base) does nothing. |
 | `drawer.ts`   | The mobile drawer is modal: focus moves in and back, nothing behind it can be reached, Escape and a click outside close it.                                                     |
 | `switcher.ts` | The project switcher: pre-rendered list, live catalog swap, keyboard disclosure, no layout shift, hostile catalogs. Needs a site whose slug is a real catalog slug.             |
 | `fences.ts`   | Every fenced code block of the Markdown comes out of the build with exactly its text.                                                                                           |

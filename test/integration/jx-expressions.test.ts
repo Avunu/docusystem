@@ -35,7 +35,10 @@ const VECTORS: Array<[number, string]> = [
   [4, `<https://example.com/${expr(4)}>`],
   [5, `A bare address https://example.com/${expr(5)} in a sentence.`],
   [6, `A bare address www.example.com/${expr(6)} in a sentence.`],
-  [7, `<iframe src="https://example.com/${expr(7)}"></iframe>`],
+  [
+    7,
+    `<picture><source srcset="https://example.com/${expr(7)}"><img src="a.png" alt="x"></picture>`,
+  ],
   [8, `<div data-a="${expr(8)}">text</div>`],
   [9, `<img src='${expr(9, '"')}' alt="x">`],
   // the spellings that Markdown decodes before Jx sees them

@@ -55,6 +55,16 @@ The build named the link. Its target does not exist, is a draft, or is not in th
 
 The `lint:` stage reports them as errors with `file:line`: "Reference-style links are not rendered: every link that uses this definition loses its text. Write the links inline" and "Footnotes are not rendered: the marker and the note both disappear". The site cannot show them and would lose text. Write the links inline, `[text](url)`, and put a footnote in the sentence or in a callout. See [what does not render](writing-docs.md#what-does-not-render). `docusystem lint` runs just these checks.
 
+## Raw HTML, a link or a file is refused
+
+```text
+lint: error: docs/guide/x.md:12  <iframe> is not allowed in documentation: it embeds another page. ...
+assert: FAIL: pages hold something that runs code or embeds another page: /docs/guide/x/ (<img onerror="...">)
+assert: FAIL: files linked from the Markdown would run on the site's domain when opened: /content/docs/a.html (a .html file, ...)
+```
+
+The pages are served from the project's own domain, so a page may not carry a script, an event handler, an embedded page, a `javascript:` or `data:` address, or an HTML or script file. The `lint:` line names the file and line; the `assert:` lines name the page and the construct and are never downgraded by `--lenient`. Fix the Markdown: use Markdown for what it can say, an image file for a drawing, a link for a video or a page, and backticks for a tag or a `:name` that is only text. See [Raw HTML, addresses and files](writing-docs.md#raw-html-addresses-and-files). The `assert:` line `pages without a sound Content-Security-Policy` means a page has something before its `<head>` that a policy cannot govern, or no `<head>` of its own; the package's layouts never do that, so look at the layout override that wrote the page.
+
 ## An empty link fails the build
 
 The `assert:` stage prints `FAIL` for the assertion that no page has an empty link (an `<a href>` with no text, image or `aria-label`). Jx writes an empty link followed by the text (or the image) for a raw HTML anchor in a paragraph (an anchor inside a `<div>` or `<p>` block keeps its link), and the assertion fails in every mode, including `--lenient`. The `lint:` stage reports the anchor first, with `file:line` (an error, printed as a warning under `--lenient`), and `docusystem lint` lists it without building. Replace the raw anchor with a Markdown link, `[text](url)`. Badges are `[![alt](image)](url)`.

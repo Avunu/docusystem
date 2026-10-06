@@ -21,6 +21,8 @@
 //            code fence: Jx would run it when the site is built. Staging writes it inert (inert.ts),
 //            so the link is not what the page says; the error is for whoever wrote it, and for the
 //            reviewer
+//   error    raw HTML, links, images and directives that run code or load other pages: `<script>`,
+//            `<iframe>`, `on...=` attributes, `javascript:` and `data:` addresses (unsafe-markup.ts)
 //
 // Errors fail a strict build (CI); warnings are printed. Step 6 of the pipeline runs this over the
 // original docs/ folder (not the staged copy), so file names and line numbers are the author's.
@@ -34,6 +36,7 @@ import { FrontmatterError, moveLeadingComment, parseFrontmatter } from "./frontm
 import { expressionsIn } from "./inert.js";
 import { codeSpans, destinations, lines, withoutCode } from "./markdown.js";
 import type { LintIssue } from "./types.js";
+import { unsafeMarkup } from "./unsafe-markup.js";
 
 /**
  * Inline elements whose content Jx moves out of the element. A tag of more than 2,000 characters is
@@ -254,6 +257,7 @@ export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[
       );
     }
   }
+  issues.push(...unsafeMarkup(all, file));
   return issues;
 }
 
