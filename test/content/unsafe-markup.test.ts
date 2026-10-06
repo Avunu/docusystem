@@ -362,12 +362,16 @@ describe("how the Markdown is read", () => {
       "autolink starts": "<a:".repeat(30_000),
       "many short paragraphs": "<a\n\n".repeat(30_000),
     };
+    // These take well under a second each on a development machine. A reader that re-scans the rest of
+    // the text at every failed tag, quote or bracket would need minutes for them, so the bounds are wide:
+    // a loaded CI machine is many times slower than a laptop, and this is a test for the shape of the
+    // cost, not for the speed of the machine.
     for (const [name, source] of Object.entries(inputs)) {
       const started = Date.now();
       lintMarkdown(source, "a.md");
-      expect(Date.now() - started, name).toBeLessThan(2500);
+      expect(Date.now() - started, name).toBeLessThan(15_000);
     }
-  });
+  }, 180_000);
 });
 
 describe("directives", () => {
