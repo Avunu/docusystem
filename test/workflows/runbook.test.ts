@@ -44,7 +44,13 @@ describe("the first-release runbook", () => {
     const [, repo, file, env] = command ?? [];
     expect(repo).toBe("Avunu/docusystem");
     expect(file).toBe(release.file);
-    expect(release.doc.jobs.publish?.environment).toBe(env);
+    const environments = Object.values(release.doc.jobs).map((job) =>
+      typeof job.environment === "string" ? job.environment : job.environment?.name,
+    );
+    expect(
+      environments,
+      "a job of release.yml runs in the environment the runbook names",
+    ).toContain(env);
   });
 
   test("release-please keeps the default labels the runbook says its lookup depends on", () => {

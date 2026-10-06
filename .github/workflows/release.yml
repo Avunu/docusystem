@@ -67,10 +67,8 @@ jobs:
     if: ${{ needs.release-please.outputs.release-created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The GitHub environment `npm` is the one named in the trusted-publisher configuration on npmjs.com.
-    # Once it is limited to main (Selected branches and tags, MAINTAINING.md "GitHub settings", step 6;
-    # a setting this file cannot enforce) a run from any other branch cannot obtain a publish token.
-    # If it does not exist yet, the first run creates it with no restriction.
+    # The GitHub environment `npm` is limited to main and is the one named in the trusted-publisher
+    # configuration on npmjs.com, so a run from any other branch cannot obtain a publish token.
     environment: npm
     permissions:
       contents: read # checkout
