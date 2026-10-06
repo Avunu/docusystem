@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Avunu/docusystem/main/config.schema.json",
+  "title": "docusystem.config.json",
+  "description": "The facts about a project that its Avunu documentation site needs. The seven identity keys are required; `docusystem init` infers and writes them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "tagline", "slug", "platform", "repo", "domain", "license"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Display name: header, page titles, footer."
+    },
+    "tagline": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "One sentence on the landing page and the default page description."
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "The project's key in https://avunu.net/projects.json (underscores allowed): it marks the current project in the switcher."
+    },
+    "platform": {
+      "enum": ["frappe", "odoo", "wordpress", "nixos", "general"],
+      "description": "Groups the project in the switcher and sets the landing eyebrow."
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[\\w.-]+/[\\w.-]+$",
+      "description": "https://github.com/<owner>/<repo>: the header link, Edit this page, rewritten repository links."
+    },
+    "domain": {
+      "type": "string",
+      "pattern": "^(?=.{4,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$",
+      "description": "The custom domain, without a scheme. Normally the repository name with hyphens, then .avunu.net."
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "SPDX license identifier."
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^(?!.*\\.\\.)(?!.*//)[A-Za-z0-9_][\\w./-]{0,99}$",
+      "description": "Override of the default branch used in Edit this page and GitHub links. Normally absent: $DOCUSYSTEM_BRANCH (set by the workflow), then origin/HEAD, then main."
+    },
+    "docs": {
+      "type": "string",
+      "minLength": 1,
+      "default": "../docs",
+      "description": "The folder of Markdown, relative to this file."
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Design-token overrides, by custom-property name. Names must exist in the installed version; `docusystem check` re-runs the WCAG contrast check on the result.",
+      "properties": {
+        "light": { "$ref": "#/$defs/tokens" },
+        "dark": { "$ref": "#/$defs/tokens" }
+      }
+    },
+    "images": {
+      "enum": ["optimize", "off"],
+      "default": "optimize",
+      "description": "`off` skips raster-image optimisation (and so the native sharp module)."
+    },
+    "jx": {
+      "type": "object",
+      "description": "Unsupported escape hatch, outside semver: a fragment merged into the generated Jx project.json. Objects merge, null deletes a key, `$head` arrays are appended to the package's, other arrays replace (with a warning)."
+    }
+  },
+  "$defs": {
+    "tokens": {
+      "type": "object",
+      "propertyNames": { "pattern": "^--[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "type": "string", "maxLength": 200, "pattern": "^[^;{}<>\\\\]*$" }
+    }
+  }
+}
