@@ -48,6 +48,16 @@ jobs:
         run: npm run check
       - name: Build
         run: npm run build
+      # release.yml runs `npm run check` once more on the release commit, after release-please has moved
+      # the version (package.json, package-lock.json and the manifest) and after the tag and the GitHub
+      # Release exist. A test that depends on the version it was written at would fail only there and
+      # leave a tag with nothing on npm. So run the tests again here, at another version, with the files
+      # moved the way release-please moves them; the working tree is discarded with the job.
+      - name: Tests at another version
+        run: |
+          npm version 99.99.99 --no-git-tag-version --ignore-scripts
+          printf '{\n  ".": "99.99.99"\n}\n' > .release-please-manifest.json
+          npm test
 
   pack:
     name: Tarball contents and types
