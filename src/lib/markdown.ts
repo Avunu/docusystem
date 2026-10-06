@@ -76,9 +76,13 @@ export function codeSpans(text: string): Array<[number, number]> {
 
 /** The text of a line with its inline code spans blanked out (same length, so offsets still match). */
 export function withoutCode(text: string): string {
-  let out = text;
-  for (const [a, b] of codeSpans(text)) out = out.slice(0, a) + " ".repeat(b - a) + out.slice(b);
-  return out;
+  let out = "";
+  let at = 0;
+  for (const [a, b] of codeSpans(text)) {
+    out += text.slice(at, a) + " ".repeat(b - a);
+    at = b;
+  }
+  return out + text.slice(at);
 }
 
 export interface Destination {
@@ -101,7 +105,12 @@ export interface Destination {
  */
 export function destinations(text: string): Destination[] {
   const spans = codeSpans(text);
-  const inCode = (at: number) => spans.some(([a, b]) => at >= a && at < b);
+  // The scan below moves forward only, so the spans are walked once rather than searched per character.
+  let span = 0;
+  const inCode = (at: number) => {
+    while (span < spans.length && spans[span]![1] <= at) span++;
+    return span < spans.length && at >= spans[span]![0];
+  };
   const found: Destination[] = [];
   const stack: boolean[] = []; // true for an image opener
   for (let i = 0; i < text.length; i++) {
@@ -126,13 +135,21 @@ export function destinations(text: string): Destination[] {
   return found.sort((a, b) => a.start - b.start);
 }
 
+/**
+ * The most characters one destination, with its title, may take. A real address is far shorter; the
+ * bound is what keeps a line of ten thousand `](` that never close from costing ten thousand
+ * scans to the end of the line.
+ */
+const MAX_LINK = 2048;
+
 /** Reads `dest "title")` starting just after the opening parenthesis. */
 function parseDestination(
   text: string,
   from: number,
 ): { destination: Omit<Destination, "image">; next: number } | null {
+  const limit = Math.min(text.length, from + MAX_LINK);
   let i = from;
-  while (text[i] === " " || text[i] === "\t") i++;
+  while (i < limit && (text[i] === " " || text[i] === "\t")) i++;
   let start = i;
   let end: number;
   let angle = false;
@@ -140,13 +157,13 @@ function parseDestination(
     angle = true;
     start = i + 1;
     end = start;
-    while (end < text.length && text[end] !== ">" && text[end] !== "<" && text[end] !== "\n") end++;
+    while (end < limit && text[end] !== ">" && text[end] !== "<" && text[end] !== "\n") end++;
     if (text[end] !== ">") return null;
     i = end + 1;
   } else {
     let depth = 0;
     end = i;
-    while (end < text.length) {
+    while (end < limit) {
       const ch = text[end]!;
       if (ch === "\\") {
         end += 2;
@@ -159,17 +176,17 @@ function parseDestination(
       } else if (/\s/.test(ch)) break;
       end++;
     }
-    if (depth !== 0) return null;
+    if (depth !== 0 || (end >= limit && limit < text.length)) return null;
     i = end;
   }
-  while (text[i] === " " || text[i] === "\t") i++;
+  while (i < limit && (text[i] === " " || text[i] === "\t")) i++;
   if (text[i] === '"' || text[i] === "'" || text[i] === "(") {
     const close = text[i] === "(" ? ")" : text[i]!;
     let j = i + 1;
-    while (j < text.length && text[j] !== close) j += text[j] === "\\" ? 2 : 1;
-    if (j >= text.length) return null;
+    while (j < limit && text[j] !== close) j += text[j] === "\\" ? 2 : 1;
+    if (j >= limit) return null;
     i = j + 1;
-    while (text[i] === " " || text[i] === "\t") i++;
+    while (i < limit && (text[i] === " " || text[i] === "\t")) i++;
   }
   if (text[i] !== ")") return null;
   return { destination: { start, end, value: text.slice(start, end), angle }, next: i + 1 };

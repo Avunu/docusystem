@@ -27,9 +27,21 @@ import { FrontmatterError, moveLeadingComment, parseFrontmatter } from "./frontm
 import { destinations, lines, withoutCode } from "./markdown.js";
 import type { LintIssue } from "./types.js";
 
-/** Inline elements whose content Jx moves out of the element. */
+/**
+ * Inline elements whose content Jx moves out of the element. A tag of more than 2,000 characters is
+ * not matched: the bound keeps a line of unterminated tags from costing a scan to the end of the
+ * line for each of them.
+ */
 const INLINE =
-  /<(kbd|b|i|em|strong|u|s|sub|sup|span|mark|small|abbr|del|ins|code|q|cite|var|samp|font|big|tt|a)(?=[\s/>])[^>]*>/gi;
+  /<(kbd|b|i|em|strong|u|s|sub|sup|span|mark|small|abbr|del|ins|code|q|cite|var|samp|font|big|tt|a)(?=[\s/>])[^>]{0,2000}>/gi;
+/** What follows an `<a ...>` that wraps an image (a badge). Sticky: it is tried at a given offset. */
+const BADGE_TAIL = /\s*<img\b[^>]{0,2000}>\s*<\/a>/iy;
+/**
+ * A table's delimiter row (`|:--|--:|`): cells of two or more dashes, optional colons, pipes between,
+ * optionally at both ends. Written so that no two parts can take the same whitespace, which keeps a
+ * long run of spaces from costing a quadratic number of attempts.
+ */
+const DELIMITER_ROW = /^\s*(?:\|\s*)?:?-{2,}:?(?:\s*\|\s*:?-{2,}:?)*(?:\s*\|)?\s*$/;
 /** The block-level tag names that start an HTML block (CommonMark type 6). */
 const BLOCK_TAG =
   /^ {0,3}<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i;
@@ -134,7 +146,7 @@ export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[
         "Task-list checkboxes are shown as plain list items. Use a plain list, or write the state in words.",
       );
     }
-    if (/^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(prose) && prose.includes(":")) {
+    if (DELIMITER_ROW.test(prose) && prose.includes(":")) {
       add(
         line.index,
         "warning",
@@ -156,8 +168,8 @@ export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[
     for (const m of prose.matchAll(INLINE)) {
       const tag = m[1]!.toLowerCase();
       if (tag === "a") {
-        const rest = prose.slice((m.index ?? 0) + m[0].length);
-        const wraps = /^\s*<img\b[^>]*>\s*<\/a>/i.test(rest);
+        BADGE_TAIL.lastIndex = (m.index ?? 0) + m[0].length;
+        const wraps = BADGE_TAIL.test(prose);
         if (tags.has(wraps ? "a-badge" : "a")) continue;
         tags.add(wraps ? "a-badge" : "a");
         add(

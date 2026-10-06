@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
   FrontmatterError,
+  MAX_FRONTMATTER,
   firstHeading,
   firstParagraph,
   inlineText,
@@ -141,16 +142,61 @@ test("moving the comment is quick on a file full of unclosed comments", () => {
   expect(performance.now() - started).toBeLessThan(2000);
 });
 
-test("a YAML warning (an unknown tag, a list as a key) is not printed", () => {
+test("a YAML warning (an unknown tag) is not printed", () => {
   const warn = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
+  const log = vi.spyOn(console, "warn").mockImplementation(() => {});
   try {
-    expect(parseFrontmatter("---\ntitle: !custom A\n? [a, b]\n: c\n---\n").data).toMatchObject({
+    expect(parseFrontmatter("---\ntitle: !custom A\nlist: [a, b]\n---\n").data).toEqual({
       title: "A",
+      list: ["a", "b"],
     });
     expect(warn).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
   } finally {
     warn.mockRestore();
+    log.mockRestore();
   }
+});
+
+test("a key that is a list, a mapping or an alias is refused, at its line", () => {
+  const cases: Array<[string, number]> = [
+    ["? [a, b]\n: c", 3],
+    ["{ a: 1 }: c", 3],
+    ["a: &x foo\n*x : y", 4],
+  ];
+  for (const [key, line] of cases) {
+    const attempt = () => parseFrontmatter(`---\ntitle: A\n${key}\n---\n`, "k.md");
+    expect(attempt).toThrow(
+      /^k\.md: the frontmatter has a key that is a list, a mapping or an alias/,
+    );
+    try {
+      attempt();
+    } catch (error) {
+      expect((error as FrontmatterError).line, key).toBe(line);
+    }
+  }
+  // Plain keys of other types are fine: Jx reads them as text.
+  expect(parseFrontmatter("---\n1: one\ntrue: yes\n---\n").data).toEqual({
+    "1": "one",
+    true: "yes",
+  });
+});
+
+test("frontmatter that would take seconds to read is refused quickly", () => {
+  // 800 characters of nested braces took the parser five seconds before the key check; 80 KiB of
+  // `[a][b` took a second.
+  const started = performance.now();
+  expect(() =>
+    parseFrontmatter(`---\n${"{".repeat(400)}${"}".repeat(400)}\n---\n`, "b.md"),
+  ).toThrow(FrontmatterError);
+  const huge = "[a][b".repeat(16_000);
+  expect(() => parseFrontmatter(`---\n${huge}\n---\n`, "h.md")).toThrow(
+    /^h\.md: the frontmatter is larger than 64 KiB/,
+  );
+  expect(performance.now() - started).toBeLessThan(2000);
+  // Just under the limit is read like any other text.
+  const near = `---\nnote: ${"x".repeat(MAX_FRONTMATTER - 20)}\n---\n`;
+  expect(parseFrontmatter(near).data.note).toHaveLength(MAX_FRONTMATTER - 20);
 });
 
 test("frontmatter with an alias bomb is an error, not a hang", () => {

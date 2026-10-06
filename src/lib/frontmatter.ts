@@ -1,7 +1,8 @@
 // Frontmatter and plain-text helpers for the documentation files. They read a page the way the Jx
 // Markdown loader does (YAML between two --- lines at the very top) and add what the sidebar needs:
 // the first heading and the first paragraph.
-import { parse as parseYaml } from "yaml";
+import { LineCounter, isAlias, isCollection, parseDocument, visit } from "yaml";
+import { codeSpans } from "./markdown.js";
 
 export interface Parsed {
   data: Record<string, unknown>;
@@ -34,6 +35,58 @@ function yamlProblem(error: unknown): { reason: string; line: number } {
 }
 
 /**
+ * The most YAML a page may carry between its two `---` lines. Real frontmatter is a few lines; the
+ * YAML parser's cost grows faster than its input for some malformed text (tens of milliseconds for
+ * 16 KiB, seconds for 80 KiB), and a page is not the place for data that large.
+ */
+export const MAX_FRONTMATTER = 64 * 1024;
+
+/**
+ * Reads the YAML of a page: the value, or a FrontmatterError that says what is wrong and where.
+ * Warnings (an unknown tag) are not printed: they would be stray lines of Node output in the middle
+ * of the build's own messages. A key that is itself a list or a mapping (`? [a, b]`) is refused:
+ * turning it into a property name costs time exponential in its nesting (800 characters of braces
+ * took five seconds), and no page has such a key.
+ */
+function readYaml(yaml: string, file: string): unknown {
+  if (yaml.length > MAX_FRONTMATTER) {
+    throw new FrontmatterError(
+      file,
+      `is larger than ${MAX_FRONTMATTER / 1024} KiB: it is page metadata, not the place for data`,
+      1,
+    );
+  }
+  const lineCounter = new LineCounter();
+  try {
+    const doc = parseDocument(yaml, { logLevel: "error", lineCounter });
+    const [problem] = doc.errors;
+    if (problem !== undefined) throw problem;
+    let offending: number | null = null;
+    visit(doc, {
+      Pair(_key, pair) {
+        if (isCollection(pair.key) || isAlias(pair.key)) {
+          offending = pair.key.range?.[0] ?? 0;
+          return visit.BREAK;
+        }
+        return undefined;
+      },
+    });
+    if (offending !== null) {
+      throw new FrontmatterError(
+        file,
+        "has a key that is a list, a mapping or an alias: keys must be plain text",
+        lineCounter.linePos(offending).line + 1,
+      );
+    }
+    return doc.toJS();
+  } catch (error) {
+    if (error instanceof FrontmatterError) throw error;
+    const { reason, line } = yamlProblem(error);
+    throw new FrontmatterError(file, `is not valid YAML (${reason})`, line, { cause: error });
+  }
+}
+
+/**
  * Splits a Markdown source into frontmatter data and body. Throws a FrontmatterError (whose message
  * starts with the file name) on bad YAML or on frontmatter that is not a mapping.
  */
@@ -44,15 +97,7 @@ export function parseFrontmatter(source: string, file = "document"): Parsed {
   const body = text.slice(match[0].length);
   const yaml = match[1] ?? "";
   if (yaml.trim() === "") return { data: {}, body };
-  let parsed: unknown;
-  try {
-    // "error" hides the warnings (an unknown tag, a key that is a list), which would be stray lines
-    // of Node output in the middle of the build's own messages; errors still throw.
-    parsed = parseYaml(yaml, { logLevel: "error" });
-  } catch (error) {
-    const { reason, line } = yamlProblem(error);
-    throw new FrontmatterError(file, `is not valid YAML (${reason})`, line, { cause: error });
-  }
+  const parsed = readYaml(yaml, file);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new FrontmatterError(file, "must be a YAML mapping (key: value lines)", 1);
   }
@@ -92,10 +137,13 @@ function proseLines(body: string): Array<{ line: string; index: number }> {
       fence = open[1]!;
       return;
     }
-    out.push({ line, index });
+    out.push({ line: line.length > MAX_INLINE ? line.slice(0, MAX_INLINE) : line, index });
   });
   return out;
 }
+
+/** The longest Markdown `inlineText` reads, and the longest line `firstHeading` and `firstParagraph` look at. */
+const MAX_INLINE = 4000;
 
 const ENTITIES: Record<string, string> = {
   "&amp;": "&",
@@ -113,12 +161,20 @@ const ENTITIES: Record<string, string> = {
  * (snake_case) and a `*` that is followed by a space stay.
  */
 export function inlineText(markdown: string): string {
+  // No title or description needs more, and the patterns below are not linear in the worst case.
+  const source = markdown.length > MAX_INLINE ? markdown.slice(0, MAX_INLINE) : markdown;
   const codes: string[] = [];
-  const text = markdown
-    .replaceAll(/(`+)([\s\S]*?[^`])\1(?!`)/g, (_m, _ticks, code: string) => {
-      codes.push(code.replace(/^ (.*) $/, "$1"));
-      return `\uE000${codes.length - 1}\uE000`;
-    })
+  let stripped = "";
+  let at = 0;
+  for (const [a, b] of codeSpans(source)) {
+    let ticks = 0;
+    while (source[a + ticks] === "`") ticks++;
+    codes.push(source.slice(a + ticks, b - ticks).replace(/^ (.*) $/, "$1"));
+    stripped += `${source.slice(at, a)}\uE000${codes.length - 1}\uE000`;
+    at = b;
+  }
+  stripped += source.slice(at);
+  const text = stripped
     .replaceAll(
       /\\([\\`*_{}[\]()#+.!|<>~-])/g,
       (_m, char: string) => `\uE001${char.charCodeAt(0)}\uE001`,
@@ -160,6 +216,7 @@ export function firstHeading(body: string): string | null {
 export function firstParagraph(body: string, max = 160): string {
   const lines = proseLines(body);
   const paragraph: string[] = [];
+  let length = 0;
   for (const { line } of lines) {
     const trimmed = line.trim();
     if (trimmed === "") {
@@ -180,6 +237,8 @@ export function firstParagraph(body: string, max = 160): string {
       continue;
     }
     paragraph.push(trimmed);
+    length += trimmed.length + 1;
+    if (length > MAX_INLINE) break; // the rest could not reach the description
   }
   const text = inlineText(paragraph.join(" "));
   if (text.length <= max) return text;
