@@ -167,7 +167,9 @@ Copies package files into `<site>/overrides/` and records each in `overrides/.ej
 docusystem jx <jx arguments...>
 ```
 
-Assembles the project root (pipeline steps 1 to 8, never builds), then runs the pinned Jx CLI as `jx <arguments> <root>`, for example `docusystem jx validate`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. The exit code is Jx's. It is a debugging aid: `jx dev` and Jx Studio are not supported.
+Assembles the project root (pipeline steps 1 to 8; docusystem itself builds nothing), then runs the pinned Jx CLI as `jx <arguments> <root>`, for example `docusystem jx build --verbose`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. The exit code is Jx's. It is a debugging aid: `jx dev` and Jx Studio are not supported.
+
+The root is assembled from empty on every run, so a file that Jx writes into it (such as the `project.schema.json` of `jx schema`) lasts only until the next docusystem command. `jx build` writes to `<root>/dist`, not to `<site>/dist`, and skips the post-build steps. `jx validate` does not work on the generated root, and prints a note saying why; see [Looking inside a build](../guide/troubleshooting.md#looking-inside-a-build).
 
 ## Exit codes
 

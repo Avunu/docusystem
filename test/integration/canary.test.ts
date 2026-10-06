@@ -18,7 +18,7 @@ import { jxVersions } from "../../src/lib/jx.js";
 import { lintDocs } from "../../src/lib/lint.js";
 import { acquireLock } from "../../src/lib/lock.js";
 import { REPO_ROOT, listTree, runCli, tempDir } from "../support/index.js";
-import { jxEnv, repoFrom, type Repo } from "./support.js";
+import { JX_CLI, jxEnv, repoFrom, type Repo } from "./support.js";
 
 // ---- is everything this file needs implemented? ----
 
@@ -108,6 +108,42 @@ describe.skipIf(waiting.length > 0)(
         const passed = await cli(repo, ["jx", "build"]);
         expect(passed.code, passed.stderr).toBe(0);
         expect(passed.stdout).toContain(`Done: ${routes} routes`);
+      });
+
+      // The facts behind the note that `docusystem jx validate` prints, and behind the Troubleshooting
+      // paragraph and the command-line reference. If this fails after a Jx bump, a fact has changed: re-check
+      // `jx validate` on the assembled root and, when it works, drop the note (src/commands/jx.ts) and the
+      // warning in docs/guide/troubleshooting.md.
+      test("`jx validate` cannot work on the generated root: the schema does not survive a run, and the package's own pages are invalid", async () => {
+        const repo = cleanRepo();
+        const schemaFile = join(repo.paths.root, "project.schema.json");
+        const schema = await cli(repo, ["jx", "schema"]);
+        expect(schema.code, schema.stderr).toBe(0);
+        expect(existsSync(schemaFile)).toBe(true); // Jx wrote it ...
+
+        const validate = await cli(repo, ["jx", "validate"]);
+        expect(existsSync(schemaFile)).toBe(false); // ... and the next docusystem run assembled the root afresh
+        expect(validate.code).toBe(1);
+        expect(validate.stderr).toContain("docusystem: note: `jx validate` does not work");
+        expect(`${validate.stdout}\n${validate.stderr}`).toContain("project.schema.json not found");
+
+        // By hand, with the schema in place: Jx itself rejects the package's pages and layouts.
+        const byHand = (command: string) =>
+          new Promise<{ code: number; output: string }>((resolve) => {
+            const child = spawn(process.execPath, [JX_CLI, command, repo.paths.root], {
+              env: jxEnv(),
+            });
+            let output = "";
+            child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+            child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+            child.on("close", (code) => resolve({ code: code ?? 1, output }));
+          });
+        expect((await byHand("schema")).code).toBe(0);
+        const invalid = await byHand("validate");
+        expect(invalid.code, invalid.output).toBe(1);
+        expect(invalid.output).toContain("Project is INVALID");
+        expect(invalid.output).toMatch(/^pages\/index\.json:$/m);
+        expect(invalid.output).toMatch(/^layouts\/base\.json:$/m);
       });
 
       test("lint is clean, links passes on the published site, info says where everything is", async () => {

@@ -346,8 +346,8 @@ const COMMANDS = {
     usage: "<jx arguments...>",
     summary: "Run the pinned Jx CLI on the assembled project (debugging)",
     description:
-      "Assembles the project root (never builds), then runs `jx <arguments> <root>` with the Jx this\n" +
-      "version is pinned to, for example `docusystem jx validate`. Everything after `jx` goes to Jx\n" +
+      "Assembles the project root (docusystem builds nothing itself), then runs `jx <arguments> <root>` with the Jx this\n" +
+      "version is pinned to, for example `docusystem jx build --verbose`. Everything after `jx` goes to Jx\n" +
       "unchanged, so give --site before it. `jx dev` and Studio are not supported.",
     options: [],
     positionals: "verbatim",
