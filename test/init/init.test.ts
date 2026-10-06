@@ -386,6 +386,19 @@ describe("init: where it runs", () => {
     expect(Object.fromEntries(SHELL_FILES.map((f) => [f, readIn(root, f)]))).toEqual(first);
   });
 
+  test("a second run keeps the indentation of the files it wrote before", async () => {
+    const root = makeRepo({ files: { ".oxfmtrc.json": '{ "useTabs": true }\n' } });
+    expect((await init(root)).code).toBe(0);
+    expect(readIn(root, "docs-site/docusystem.config.json")).toContain('{\n\t"$schema"');
+    // the repository changes its mind about its formatter: the files already there are not re-indented
+    writeFileSync(join(root, ".oxfmtrc.json"), '{ "tabWidth": 4 }\n');
+    const again = await init(root, {}, { deps: NEVER });
+    expect(again.code).toBe(0);
+    expect(again.out).toContain("init: nothing to do: the shell is in place");
+    expect(readIn(root, "docs-site/docusystem.config.json")).toContain('{\n\t"$schema"');
+    expect(readIn(root, "docs-site/package.json")).toContain('{\n\t"name"');
+  });
+
   test("a second run after the pins moved to another release leaves the callers alone", async () => {
     const root = makeRepo();
     await init(root);
@@ -449,7 +462,7 @@ describe("init: where it runs", () => {
     ) as Record<string, unknown>;
     expect(config.docs).toBe("../../docs");
     expect(readIn(root, ".github/workflows/docs.yml")).toContain("site-directory: tools/docs-site");
-    expect(readIn(root, ".github/workflows/docs.yml")).toContain('"tools/docs-site/**"');
+    expect(readIn(root, ".github/workflows/docs.yml")).toContain("      - tools/docs-site/**\n");
     expect(readIn(root, ".github/dependabot.yml")).toContain("directory: /tools/docs-site");
     // inside it, without the option, init finds that it is in a site folder
     const again = await init(root, {}, { cwd: join(root, "tools/docs-site"), deps: NEVER });
@@ -481,7 +494,7 @@ describe("init: where it runs", () => {
       '"docs": "../documentation"',
     );
     expect(readIn(root, ".github/workflows/docs.yml")).toContain(
-      'paths: ["documentation/**", "docs-site/**"',
+      "paths:\n      - documentation/**\n      - docs-site/**\n      - .github/workflows/docs.yml\n",
     );
   });
 

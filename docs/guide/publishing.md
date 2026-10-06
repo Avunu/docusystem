@@ -23,7 +23,11 @@ name: Docs
 # Nothing here can publish: the token is read-only. Publishing is docs-publish.yml.
 on:
   pull_request:
-    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml", ".github/workflows/docs-publish.yml"]
+    paths:
+      - docs/**
+      - docs-site/**
+      - .github/workflows/docs.yml
+      - .github/workflows/docs-publish.yml
 
 permissions: {}
 
@@ -51,7 +55,11 @@ name: Docs publish
 # Runs on push and by hand, never on a pull request, so it never sees a pull request's token.
 on:
   push:
-    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml", ".github/workflows/docs-publish.yml"]
+    paths:
+      - docs/**
+      - docs-site/**
+      - .github/workflows/docs.yml
+      - .github/workflows/docs-publish.yml
   workflow_dispatch:
 
 permissions: {}
@@ -79,6 +87,7 @@ The `paths` globs and `site-directory` follow the config: the docs folder relati
 - **Neither names a branch.** The shared workflows read the repository's default branch themselves, so a repository whose default branch is `develop` or `18.0` needs nothing, and a rename of the default branch needs no edit.
 - **The build runs on every pull request, even before Pages is enabled.** Only the deploy job waits for `DOCS_SITE_ENABLED`.
 - **A push to another branch** that touches these paths starts a run whose jobs are skipped.
+- **The `paths` lists have one entry per line.** A one-line list is re-wrapped by oxfmt and prettier at their print width, which would fail the repository's own format check on the pull request that adds the workflows. If you edit a list, keep it a block list.
 - **A commit, never a tag.** Callers pin a commit with a `# vX.Y.Z` comment. There is no moving major tag. `docusystem upgrade` re-pins both files, and Dependabot's `github-actions` entry moves the pin.
 
 ## What a maintainer sets, once

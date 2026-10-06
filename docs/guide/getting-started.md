@@ -94,3 +94,4 @@ The details, and why each one is needed, are in [Publishing](publishing.md).
 
 - The README's link to the documentation.
 - Formatter and hook exclusions that cover `docs/`. A pre-commit hook that stamps a copyright comment above front matter should exclude `^docs/`: staging repairs the stamp for the site, but GitHub and Obsidian read the unrepaired file and then show the front matter as text.
+- A format check of the whole repository (oxfmt, prettier) over the new files. `init` writes them the way those tools print them and indents the JSON the way the repository's formatter configuration, `.editorconfig` or root `package.json` asks, but run the check once before the pull request, or ignore `docs-site` in the formatter's configuration. See [Hooks rewrite `docs/`](troubleshooting.md#hooks-rewrite-docs).

@@ -99,7 +99,14 @@ The build prints the `images: "off"` hint itself when Jx's output mentions `shar
 
 ## Hooks rewrite `docs/`
 
-A pre-commit hook that stamps a copyright comment above the front matter does not break the build, because staging moves the comment, but GitHub and Obsidian then show the front matter as text. Exclude `^docs/` from that hook. `docusystem doctor` warns about a `.pre-commit-config.yaml` with a copyright hook and mentions formatter configs that would reformat `docs/`. The site folder itself needs no exclusions: it holds only the config, `package.json` and the lockfile.
+A pre-commit hook that stamps a copyright comment above the front matter does not break the build, because staging moves the comment, but GitHub and Obsidian then show the front matter as text. Exclude `^docs/` from that hook. `docusystem doctor` warns about a `.pre-commit-config.yaml` with a copyright hook and mentions formatter configs that would reformat `docs/`.
+
+The files that `init` writes are meant to pass the repository's own format check as they are, so that the pull request that adopts the system does not turn the repository's CI red:
+
+- The caller workflows list their `paths:` one entry per line. A one-line list is re-wrapped by oxfmt and prettier as soon as it is wider than their print width, and a block list is stable at any width and with any quote style.
+- The two JSON files of the site folder are indented the way the repository asks for JSON: `useTabs` and `tabWidth` in `.oxfmtrc.json` or `.prettierrc`, else `.editorconfig`, else the indentation of the root `package.json`, else two spaces. An existing file keeps its own.
+
+`init` can only read what is written down. A formatter that is configured in a script, or by a rule `init` does not know, can still disagree. If the repository's format check fails on `docs-site/` or on the two workflows, run the formatter over them once (`npx oxfmt docs-site .github/workflows`), or leave the folder alone by ignoring it, for example `"ignorePatterns": ["docs-site"]` in `.oxfmtrc.json`. The site folder holds only the config, `package.json`, the lockfile and the git-ignored `dist/` and `.docusystem/`, so nothing is lost by ignoring it. Keep the lockfile out of the formatter in any case (`package-lock.json` is in most `ignorePatterns` already).
 
 ## A leftover from the starter
 
