@@ -43,6 +43,7 @@ These hold for the whole package. A change that needs to break one is a design d
 9. **Overrides are visible and cost something.** Every override and every `jx` fragment is printed on build, recorded in the manifest and reported by `doctor` when it can drift.
 10. **Trust assertions, not Jx.** Jx ignores what it does not understand and still exits 0, so the output is asserted positively.
 11. **Both runtimes first-class for local use.** `build`, `check` and `dev` run on Node and on Bun. CI and deploys use Node 24 only.
+12. **A page is data.** Nothing a page of Markdown says reaches Jx as a template (staging writes every `${` inert), and no published page carries a script: the lint and the output assertions refuse code, and every page carries a Content-Security-Policy.
 
 Source conventions: TypeScript with ES modules, `.js` specifiers for relative imports, module `nodenext`, declarations on and no source maps. `src/` uses Node APIs only, never Bun APIs. Compiled JavaScript is what ships, because Node refuses TypeScript inside `node_modules`.
 
