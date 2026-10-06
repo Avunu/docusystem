@@ -778,16 +778,18 @@ export function formatPlan(plan, o = {}) {
     `migrate-pilot: ${plan.clone} (site folder ${plan.site}/, @avunu/docusystem ${plan.range}, pins v${plan.version})`,
   );
   lines.push(
-    write
-      ? "migrate-pilot: applying the plan"
-      : "migrate-pilot: dry run: nothing is written; add --write to apply the plan",
+    plan.errors.length > 0
+      ? "migrate-pilot: the plan has an error: nothing is written"
+      : write
+        ? "migrate-pilot: applying the plan"
+        : "migrate-pilot: dry run: nothing is written; add --write to apply the plan",
   );
   if (plan.errors.length > 0) {
     lines.push("", "Errors (the plan is not applied while there is one):");
     for (const e of plan.errors) lines.push(`  - ${e}`);
   }
   if (plan.actions.length === 0) {
-    lines.push("", "Nothing to do: the clone is already migrated.");
+    if (plan.errors.length === 0) lines.push("", "Nothing to do: the clone is already migrated.");
   } else {
     lines.push("");
     const width = Math.max(...plan.actions.map((a) => a.path.length));

@@ -105,6 +105,14 @@ describe("the plan", () => {
     expect(p.advice.join("\n")).toContain("refs/tags/v0.1.0");
   });
 
+  test("a plan with an error says so, and does not claim there is nothing to do", () => {
+    const report = m.formatPlan(plan(tempDir("docusystem-migrate-")), { write: true }).join("\n");
+    expect(report).toContain("the plan has an error: nothing is written");
+    expect(report).toContain("has no .git");
+    expect(report).not.toContain("applying the plan");
+    expect(report).not.toContain("Nothing to do");
+  });
+
   test("is refused for a folder that is not a clone, has no site folder or no starter", () => {
     const noGit = tempDir("docusystem-migrate-");
     expect(plan(noGit).errors[0]).toContain("has no .git");
