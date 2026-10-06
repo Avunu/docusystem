@@ -36,6 +36,7 @@ These are the properties the system intends to have. A way to break one is a vul
 
 - The build job of the reusable workflow has `contents: read` and no secrets. The deploy job executes no project code. No workflow that a pull request can trigger asks for `pages: write` or `id-token: write`.
 - Callers pin the reusable workflows by commit, and every action in them is pinned by commit.
+- The release pipeline publishes with an OIDC token that only one job can read, and that job runs no code of this repository or its dependencies: it publishes a tarball that a job without the token built.
 - No install script runs for consumers, the package makes no network access during a build unless `--refresh-catalog` is passed, and the CLI deletes only paths inside the site folder's `.docusystem/` and `dist/`.
 - Files that are published are copies; a symbolic link that leaves the repository is skipped, never followed.
 
