@@ -27,16 +27,25 @@ vi.mock("../../src/lib/package-info.js", (original) =>
 
 const OXFMT = join(REPO_ROOT, "node_modules", "oxfmt", "bin", "oxfmt");
 
+/** The colour codes that oxfmt prints when the terminal, or a CI runner, asks for colour. */
+const COLOUR = new RegExp(String.raw`\u001b\[[0-9;]*m`, "g");
+/** oxfmt with colour off, whatever the environment of the test run says. */
+const OXFMT_ENV = { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" };
+
 /** `oxfmt --check <files>` in `cwd`: the files it flags (none: the format check passes). */
 function flagged(cwd: string, files: string[]): string[] {
   try {
-    execFileSync(process.execPath, [OXFMT, "--check", ...files], { cwd, stdio: "pipe" });
+    execFileSync(process.execPath, [OXFMT, "--check", ...files], {
+      cwd,
+      env: OXFMT_ENV,
+      stdio: "pipe",
+    });
     return [];
   } catch (error) {
-    const out = String((error as { stdout?: Buffer }).stdout ?? "");
+    const out = String((error as { stdout?: Buffer }).stdout ?? "").replace(COLOUR, "");
     const lines = out.split("\n").filter((line) => /\(\d+ms\)/.test(line));
     if (lines.length === 0) throw error; // oxfmt itself failed, not the check
-    return lines.map((line) => line.replace(/\s*\(\d+ms\)$/, ""));
+    return lines.map((line) => line.replace(/\s*\(\d+ms\)$/, "").trim());
   }
 }
 
@@ -170,7 +179,11 @@ describe("what init writes passes the repository's own oxfmt check", () => {
 
   test("running init again after the formatter has run changes nothing", async () => {
     const root = await adopt({ ".oxfmtrc.json": json({ useTabs: true }) });
-    execFileSync(process.execPath, [OXFMT, "docs-site", ".github"], { cwd: root, stdio: "pipe" });
+    execFileSync(process.execPath, [OXFMT, "docs-site", ".github"], {
+      cwd: root,
+      env: OXFMT_ENV,
+      stdio: "pipe",
+    });
     const { code, out, err } = await exec(
       (ctx) => runInit(ctx, { resolvePin: () => ({ sha: SHA, reason: null }) }),
       { command: "init", cwd: root },
