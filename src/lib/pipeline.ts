@@ -36,6 +36,7 @@ import { runPostbuild } from "./postbuild.js";
 import { preflight } from "./preflight.js";
 import { stageSite } from "./stage.js";
 import {
+  assertionFailure,
   doneRoutes,
   expectedRoutes,
   failureProblems,
@@ -432,13 +433,12 @@ export async function runPipelineWith(
       error(`jx: ${strict ? "error" : "warning"}: ${message}`);
       documentProblem("jx", message);
     }
-    if (documentProblems > 0) {
-      if (strict) {
-        error(strictFailure(documentProblems));
-        return result(false, assembled);
-      }
-      error(lenientNotice(documentProblems));
+    if (documentProblems > 0 && strict) {
+      error(strictFailure(documentProblems));
+      return result(false, assembled);
     }
+    // A lenient build goes on; its notice that these are only warnings comes after step 12, once no
+    // assertion has stopped the build (what stops it is not a warning).
 
     // ---- step 11: postbuild ----
     const summary: PostbuildSummary = deps.runPostbuild(paths.jxDist, { ...config, branch }, nav, {
@@ -459,6 +459,10 @@ export async function runPipelineWith(
     const assertions: Assertion[] = deps.assertBuild(paths.root, paths.jxDist, {
       cname: config.domain,
       routes: expected,
+      // the Markdown file of each page, as lint prints it, so that a failure about a page names it
+      sources: Object.fromEntries(
+        Object.entries(nav.pages).map(([route, page]) => [route, docsFile(page.edit)]),
+      ),
     });
     let failed = 0;
     for (const assertion of assertions) {
@@ -471,9 +475,11 @@ export async function runPipelineWith(
       }
     }
     if (failed > 0) {
-      error(`docusystem: ${failed} output assertion(s) failed. Nothing was published.`);
+      for (const line of assertionFailure(failed, { strict, linted: issues.length > 0 }))
+        error(line);
       return result(false, assembled);
     }
+    if (documentProblems > 0) error(lenientNotice(documentProblems));
 
     // ---- step 13: publish ----
     deps.replaceDir(paths.jxDist, paths.dist);

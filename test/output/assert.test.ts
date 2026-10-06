@@ -585,6 +585,44 @@ describe("emptyLinks", () => {
   });
 });
 
+describe("a link failure names the Markdown file of the page", () => {
+  /** The message of the empty-link assertion, for a fixture whose guide page holds a raw anchor. */
+  const hollow = (sources?: Record<string, string>): string => {
+    const site = copySite();
+    edit(guide(site), (t) => swap(t, "<p>Back", "<p><a href></a>Raw anchor. Back"));
+    const results = assertBuild(site.root, site.dist, {
+      cname: DOMAIN,
+      routes: PAGES,
+      ...(sources === undefined ? {} : { sources }),
+    });
+    expect(results[A.links]!.ok).toBe(false);
+    return results[A.links]!.message;
+  };
+
+  // The message may go on after the entry (a hint about the usual cause), so each is matched at its start.
+  test("the route, then the file it was built from, then the tag", () => {
+    expect(hollow({ "/docs/": "docs/README.md", "/docs/guide/": "docs/guide/install.md" })).toMatch(
+      /^links with nothing inside: \/docs\/guide\/ from docs\/guide\/install\.md \(<a href>\)(?:\.|$)/,
+    );
+  });
+
+  test("a page the sources do not list, or no sources at all, is named by its route alone", () => {
+    for (const message of [hollow({ "/docs/": "docs/README.md" }), hollow()]) {
+      expect(message).toMatch(/^links with nothing inside: \/docs\/guide\/ \(<a href>\)(?:\.|$)/);
+    }
+  });
+
+  test("the sources change nothing for a site that passes", () => {
+    const site = copySite();
+    const results = assertBuild(site.root, site.dist, {
+      cname: DOMAIN,
+      routes: PAGES,
+      sources: { "/docs/guide/": "docs/guide/install.md" },
+    });
+    expect(results.filter((a) => !a.ok)).toEqual([]);
+  });
+});
+
 describe("componentsOf", () => {
   test("lists components/*.json by tag, falls back to the file name, and reports files it cannot read", () => {
     const root = tempDir();

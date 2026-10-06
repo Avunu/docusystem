@@ -161,7 +161,19 @@ describe("a clean build", () => {
     expect(args?.catalogUrl).toBe("http://127.0.0.1:1/projects.json");
     expect(args?.branch).toBe("main");
     expect(world.seen.postbuild[0]?.config.branch).toBe("main");
-    expect(world.seen.assertions).toEqual([{ cname: "example.avunu.net", routes: 6 }]);
+    expect(world.seen.assertions).toEqual([
+      {
+        cname: "example.avunu.net",
+        routes: 6,
+        // each page of the nav with the Markdown file it was built from, as lint prints it
+        sources: {
+          "/docs/": "docs/README.md",
+          "/docs/page-1/": "docs/page-1.md",
+          "/docs/page-2/": "docs/page-2.md",
+          "/docs/page-3/": "docs/page-3.md",
+        },
+      },
+    ]);
   });
 
   test("does not ask the catalog for a refresh unless it is asked", async () => {
@@ -520,8 +532,100 @@ describe("output assertions", () => {
       expect(distFiles(world)["index.html"]).toBe(before["index.html"]);
       expect(out).toContain("assert: ok: one h1 per page");
       expect(err).toContain("assert: FAIL: CNAME is example.org, not example.avunu.net");
-      expect(err.at(-1)).toBe("docusystem: 2 output assertion(s) failed. Nothing was published.");
+      expect(err).toContain("docusystem: 2 output assertion(s) failed. Nothing was published.");
     }
+  });
+
+  const LENIENT_ONLY = "a lenient build (the default outside CI, and always `docusystem dev`)";
+  const LINT_CAUSE = "If a lint warning above is about the page an assertion names";
+  const rawAnchor = (): World["lint"] => [
+    {
+      file: "page-1.md",
+      line: 5,
+      level: "warning",
+      rule: "html-inline",
+      message: "An inline <a href> keeps its text but loses the link.",
+    },
+  ];
+  const emptyLink = (): World["assertions"] => [
+    {
+      ok: false,
+      message: "links with nothing inside: /docs/page-1/ from docs/page-1.md (<a href>)",
+    },
+  ];
+
+  test("a lenient build says that leniency does not reach the assertion, and where the cause is", async () => {
+    const world = makeWorld();
+    world.lint = rawAnchor();
+    world.assertions = emptyLink();
+    const { result, err } = await run(world, { lenient: true });
+    expect(result.ok).toBe(false);
+    // the lint warning with its file and line, then the failure naming the same file, then why it still fails
+    expect(err).toContain(
+      "lint: warning: docs/page-1.md:5  An inline <a href> keeps its text but loses the link.",
+    );
+    expect(err).toContain(
+      "assert: FAIL: links with nothing inside: /docs/page-1/ from docs/page-1.md (<a href>)",
+    );
+    expect(err.slice(-2)).toEqual([
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+      expect.stringContaining(LENIENT_ONLY),
+    ]);
+    expect(err.at(-1)).toContain("output assertions fail every build");
+    expect(err.at(-1)).toContain(LINT_CAUSE);
+  });
+
+  test("a lenient build without lint output says only that leniency does not reach the assertion", async () => {
+    const world = makeWorld();
+    world.assertions = [{ ok: false, message: "CNAME is missing" }];
+    const { err } = await run(world, { lenient: true });
+    expect(err.slice(-2)).toEqual([
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+      expect.stringContaining("output assertions fail every build."),
+    ]);
+    expect(err.at(-1)).not.toContain(LINT_CAUSE);
+  });
+
+  test("a strict build keeps the one line, and adds the pointer to the lint line only when lint printed something", async () => {
+    const bare = makeWorld();
+    bare.assertions = [{ ok: false, message: "CNAME is missing" }];
+    const plain = await run(bare, { strict: true });
+    expect(plain.err.at(-1)).toBe(
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+    );
+    expect(plain.err.some((line) => line.includes("lenient"))).toBe(false);
+
+    const world = makeWorld();
+    world.lint = rawAnchor();
+    world.assertions = emptyLink();
+    const { err } = await run(world, { strict: true });
+    expect(err.slice(-2)).toEqual([
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+      `docusystem: ${LINT_CAUSE}, that warning is the cause: fix it.`,
+    ]);
+    expect(err.some((line) => line.includes("lenient"))).toBe(false);
+  });
+
+  test("a lenient build that an assertion stopped does not claim the document problems are only warnings", async () => {
+    // A document problem (a skipped symbolic link) that lenient downgrades, and an assertion that fails.
+    const stopped = makeWorld();
+    stopped.stage = {
+      skipped: [{ path: "x.md", reason: "a symbolic link outside the repository" }],
+    };
+    stopped.assertions = emptyLink();
+    const failed = await run(stopped, { lenient: true });
+    expect(failed.result.ok).toBe(false);
+    expect(failed.all.some((line) => line.includes("only warnings"))).toBe(false);
+
+    // The same problem with every assertion passing: the notice is given, after the assertions, and the site is published.
+    const goes = makeWorld();
+    goes.stage = { skipped: [{ path: "x.md", reason: "a symbolic link outside the repository" }] };
+    const passed = await run(goes, { lenient: true });
+    expect(passed.result.ok).toBe(true);
+    const notice = passed.all.findIndex((line) => line.includes("only warnings"));
+    expect(notice).toBeGreaterThan(passed.all.findIndex((line) => line.startsWith("assert: ok:")));
+    expect(countOf(passed.all, "only warnings")).toBe(1);
+    expect(goes.calls).toContain("publish");
   });
 
   test("post-build warnings are printed and never fatal", async () => {

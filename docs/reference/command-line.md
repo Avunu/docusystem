@@ -210,6 +210,8 @@ strict = !lenient && (--strict || CI=true)
 
 Leniency is a per-run flag for the first pass, not a file setting, and the reusable workflows expose no lenient input.
 
+A lenient build (the default outside CI, and what `dev` always runs) can therefore print warnings and still fail: the output assertions run after the build and nothing relaxes them. A failure about a page names the page and the Markdown file it was built from, and the closing lines say that leniency does not reach it. The usual case is a raw HTML `<a href>` in Markdown: lint reports it with `file:line`, Jx writes an empty link, and the assertion "no page has an empty link" fails every build. The earlier starter published such a link without a word, so a repository that moves from the starter can meet this on its first build. Write `[text](url)`; `docusystem lint` lists the places.
+
 ## Output conventions
 
 Every stage prints with one prefix: `preflight:`, `assemble:`, `stage:`, `lint:`, `nav:`, `jx:`, `postbuild:`, `assert:`, `contrast:`, `links:`, `overrides:` and `catalog:`.

@@ -172,13 +172,15 @@ function hostOf(url: string): string | null {
  * Step 12. `root` is the assembled project root (its `components/` say which custom elements are
  * registered), `dist` the post-processed Jx output, `expected.cname` the configured domain and
  * `expected.routes` the number of pages the build must have produced (the sidebar's pages plus the
- * static ones; `null` leaves the count unchecked). Returns one assertion per fact, all of them even
- * after a failure, in the order the record lists them.
+ * static ones; `null` leaves the count unchecked). `expected.sources` says which Markdown file each
+ * page was built from (route to the file as the repository shows it, `docs/guide/x.md`), so that a
+ * failure about a page can name the file the author has to open. Returns one assertion per fact, all
+ * of them even after a failure, in the order the record lists them.
  */
 export function assertBuild(
   root: string,
   dist: string,
-  expected: { cname: string; routes: number | null },
+  expected: { cname: string; routes: number | null; sources?: Record<string, string> },
 ): Assertion[] {
   if (!existsSync(dist)) return [fail(`${dist} does not exist: the build produced nothing`)];
   const out: Assertion[] = [];
@@ -229,11 +231,17 @@ export function assertBuild(
     ),
   );
 
-  // No link with nothing to read (Jx writes a raw HTML anchor as `<a href></a>text`).
+  // No link with nothing to read (Jx writes a raw HTML anchor as `<a href></a>text`). The page is
+  // named with the Markdown file it was built from when that is known: the rendered HTML has no
+  // line, but lint reports the raw anchor for that file with one.
   const hollowLinks = pages.flatMap(({ route, html }) => {
     const found = emptyLinks(html);
+    const source = expected.sources?.[route];
     return found.length > 0
-      ? [`${route} (${found[0]}${found.length > 1 ? ` and ${found.length - 1} more` : ""})`]
+      ? [
+          `${route}${source === undefined ? "" : ` from ${source}`} ` +
+            `(${found[0]}${found.length > 1 ? ` and ${found.length - 1} more` : ""})`,
+        ]
       : [];
   });
   out.push(

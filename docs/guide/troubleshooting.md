@@ -45,7 +45,7 @@ docusystem: 3 document problem(s) above fail the build. Fix the documents, or ru
 
 The strict build (`CI=true`, and always `check`) collects every document problem before it stops: lint errors, Jx output lines that start with `Content`, `Warning:` or `Error`, and skipped symbolic links. They are printed once, above this line, with `file:line` where there is one, and nothing is published. Fix them in the Markdown. While you work through a long list locally, `docusystem build --lenient` prints the same problems as warnings and still builds. CI has no lenient setting.
 
-Problems that are never downgraded, even by `--lenient`: a config error, a failing `jx`, a failed output assertion and the contrast gate.
+Problems that are never downgraded, even by `--lenient`: a config error, a failing `jx`, a failed output assertion and the contrast gate. A lenient build can therefore print warnings and still fail on an assertion. The `assert:` line names the page and its Markdown file, and the closing lines say that leniency does not reach it: if a `lint:` warning above is about the same file, that warning is the cause (see [an empty link](#an-empty-link-fails-the-build)).
 
 ## A link is plain text on the page
 
