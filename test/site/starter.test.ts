@@ -1,5 +1,6 @@
 // site/ is the starter's template (Avunu/docs, Sites/project-docs-starter/template at commit 1820d01,
-// the commit the three pilots copied) with exactly the four changes of section 10.3 and nothing else.
+// the commit the three pilots copied) with exactly the four changes of section 10.3, the two fixes
+// that came after (the scrollable region and the escaped <title>) and nothing else.
 // fixtures/starter-1820d01.json records the sha256 of every file of that template; these tests list
 // the differences against it and prove that each one is exactly its change by undoing it.
 import { createHash } from "node:crypto";
@@ -22,8 +23,14 @@ const shippedName = (starterPath: string): string => RENAMED[starterPath] ?? sta
 
 const sha = (text: string): string => createHash("sha256").update(text).digest("hex");
 
+interface Change {
+  occurrences: number;
+  from: string;
+  to: string;
+}
+
 /** The changes, each as a function from this package's file to the starter's file. */
-const UNDO: Record<string, { why: string; occurrences: number; from: string; to: string }> = {
+const UNDO: Record<string, Change & { why: string; and?: Change[] }> = {
   "layouts/base.json": {
     why: "the resolved config is docusystem.config.json (the id, which names the file, and the description)",
     occurrences: 2,
@@ -43,10 +50,30 @@ const UNDO: Record<string, { why: string; occurrences: number; from: string; to:
     to: '"source": "./docs.config.json"',
   },
   "pages/[...path].json": {
-    why: "the edit-this-page URL reads the docs folder from the config instead of the literal docs",
+    why: "the edit-this-page URL reads the docs folder from the config instead of the literal docs, and the <title> is written escaped (headTitle: Jx writes that one element as it is)",
     occurrences: 1,
     from: "(c.docsPath || 'docs')",
     to: "'docs'",
+    and: [
+      { occurrences: 1, from: '"title": "${state.headTitle}"', to: '"title": "${state.pageTitle}"' },
+      {
+        occurrences: 1,
+        from: [
+          '    "headTitle": {',
+          '      "$prototype": "Function",',
+          '      "timing": "compiler",',
+          `      "body": "return String(state.pageTitle).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');"`,
+          "    },",
+          "",
+        ].join("\n"),
+        to: "",
+      },
+      {
+        occurrences: 1,
+        from: "The <title> is the one place Jx writes text as it is (every attribute and text node it escapes itself), so the page hands it the title already escaped (headTitle): a title that holds `</title>` stays text instead of ending the element. ",
+        to: "",
+      },
+    ],
   },
   "components/docs-enhance.json": {
     why: "the scrollable-region fix: a region that overflows by one pixel is focusable too",
@@ -82,7 +109,7 @@ describe("site/ against the starter template of commit 1820d01", () => {
     expect(exists("public/CNAME")).toBe(false);
   });
 
-  test("the files that differ from the template are exactly the five that carry the four changes", () => {
+  test("the files that differ from the template are exactly the five that carry the changes", () => {
     const differing = Object.entries(starter.files)
       .filter(([file]) => !NOT_SHIPPED.includes(file))
       .filter(([file, hash]) => sha256(join(SITE, shippedName(file))) !== hash)
@@ -93,9 +120,11 @@ describe("site/ against the starter template of commit 1820d01", () => {
 
   for (const [file, undo] of Object.entries(UNDO)) {
     test(`${file}: ${undo.why}, and nothing else`, () => {
-      const text = readText(file);
-      expect(text.split(undo.from)).toHaveLength(undo.occurrences + 1);
-      const original = text.split(undo.from).join(undo.to);
+      let original = readText(file);
+      for (const change of [undo, ...(undo.and ?? [])]) {
+        expect(original.split(change.from)).toHaveLength(change.occurrences + 1);
+        original = original.split(change.from).join(change.to);
+      }
       const starterFile = Object.keys(starter.files).find((f) => shippedName(f) === file)!;
       expect(sha(original)).toBe(starter.files[starterFile]);
     });

@@ -45,6 +45,7 @@ A failed strict build leaves the previous `<site>/dist` untouched.
 - No registered custom element is left empty (not rendered).
 - No page has an empty link: an `<a href>` with no text, image or `aria-label`. A raw HTML anchor in the Markdown is the usual cause, and step 6 reports it as a lint error with its file and line.
 - Exactly one `<h1>` per page.
+- The `<title>` of every page is text: the head has one `<title>` and one `</title>`. Jx writes the title text as it is, so a title that holds `</title>` would end the element and leave what follows it as live HTML in the head.
 - No unevaluated template text in the output: a dollar sign, an opening brace and the word `state`, which would mean a page template was not evaluated.
 - `CNAME` equals `domain`.
 - At least one `fonts/*.woff2`; `@font-face` URLs are local; no third-party font host appears.

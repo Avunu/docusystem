@@ -166,6 +166,28 @@ describe.skipIf(waiting.length > 0)(
         expect(info.lastBuild?.strict).toBe(true);
       });
 
+      test("a title that holds markup is shown as text, not written into the head (front matter, heading)", async () => {
+        const payload =
+          '</title><script>document.documentElement.setAttribute("data-pwn","1")</script>';
+        const repo = repoFrom("canary/clean", {
+          "docs/guide/evil-front-matter.md": `---\ntitle: 'Evil ${payload}'\n---\n\nBody.\n`,
+          "docs/guide/evil-code.md": `# Code \`${payload}\` span\n\nBody.\n`,
+          "docs/guide/evil-entity.md": `# Entity &lt;/title&gt;&lt;script&gt;x&lt;/script&gt;\n\nBody.\n`,
+        });
+        const { code, stdout, stderr } = await cli(repo, ["check", "--ci"]);
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        for (const page of ["evil-front-matter", "evil-code", "evil-entity"]) {
+          const html = readFileSync(
+            join(repo.paths.dist, "docs", "guide", page, "index.html"),
+            "utf8",
+          );
+          const head = html.slice(0, html.lastIndexOf("</head>"));
+          expect(occurrences(head, "</title>"), page).toBe(1);
+          expect(head, page).toMatch(/<title>[^<]*&lt;\/title&gt;&lt;script&gt;[^<]*<\/title>/);
+          expect(html, page).not.toMatch(/<script>(?:document|x)/);
+        }
+      });
+
       test("a second build is the same site", async () => {
         const repo = cleanRepo();
         await cli(repo, ["build"]);

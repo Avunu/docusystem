@@ -29,7 +29,16 @@ function derive(options: {
       data: options.data ?? {},
     },
   };
-  for (const key of ["lead", "titleNodes", "body", "tocNodes", "hasToc", "tagNodes", "pageTitle"])
+  for (const key of [
+    "lead",
+    "titleNodes",
+    "body",
+    "tocNodes",
+    "hasToc",
+    "tagNodes",
+    "pageTitle",
+    "headTitle",
+  ])
     state[key] = new Function("state", page.state[key]!.body!)(state);
   return state;
 }
@@ -158,6 +167,29 @@ test("the home page's <title> does not say the project's name twice", () => {
   expect(derive({ title: "FRAPPE-NIX", children: [] }).pageTitle).toBe(
     "Documentation · frappe-nix",
   );
+});
+
+test("the text of <title> is escaped before Jx writes it (Jx writes that one element as it is)", () => {
+  expect(page).toMatchObject({ title: "${state.headTitle}" });
+  // A title that closes the element, however it got there (front matter, a heading with a code span or
+  // an entity), is text in the tab and never the start of markup.
+  const hostile = 'Evil </title><script>alert("x")</script>';
+  const out = derive({ title: hostile, children: [] });
+  expect(out.headTitle).toBe(
+    'Evil &lt;/title&gt;&lt;script&gt;alert("x")&lt;/script&gt; · frappe-nix',
+  );
+  expect(out.headTitle).not.toMatch(/[<>]/);
+  // The social tags take the plain title: Jx escapes an attribute itself, and escaping it here too
+  // would show `&lt;` in a shared link.
+  expect(out.pageTitle).toBe(`${hostile} · frappe-nix`);
+  expect(derive({ title: "Array<string> & Tom &amp; Jerry", children: [] }).headTitle).toBe(
+    "Array&lt;string&gt; &amp; Tom &amp;amp; Jerry · frappe-nix",
+  );
+  // The name of the project is escaped too, and a plain title is left as it is.
+  expect(derive({ title: "Install", children: [], name: "A<B" }).headTitle).toBe(
+    "Install · A&lt;B",
+  );
+  expect(derive({ title: "Install", children: [] }).headTitle).toBe("Install · frappe-nix");
 });
 
 test("the landing page's cards show titles and descriptions as text, whatever they hold", () => {
