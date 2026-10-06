@@ -1,0 +1,14 @@
+{
+  "tagName": "div",
+  "state": {
+    "config": { "$prototype": "ContentEntry", "contentType": "config", "id": "docusystem.config", "timing": "compiler" },
+    "nav": { "$prototype": "ContentEntry", "contentType": "nav", "id": "nav", "timing": "compiler" },
+    "catalog": { "$prototype": "ContentEntry", "contentType": "projects", "id": "projects.snapshot", "timing": "compiler" }
+  },
+  "$head": [{ "tagName": "meta", "attributes": { "property": "og:site_name", "content": "${state.config.data.name}" } }],
+  "children": [
+    { "tagName": "a", "attributes": { "href": "/" }, "textContent": "${state.config.data.name}" },
+    { "tagName": "slot" },
+    { "tagName": "docs-footer" }
+  ]
+}
