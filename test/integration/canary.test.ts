@@ -7,7 +7,16 @@
 // real after the packages are merged. jx-canary.test.ts runs the same trees through the real pipeline
 // and the real Jx with stand-ins for those packages, and always runs.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { run } from "../../src/main.js";
@@ -164,15 +173,22 @@ describe.skipIf(waiting.length > 0)(
         expect(`${validate.stdout}\n${validate.stderr}`).toContain("project.schema.json not found");
 
         // By hand, with the schema in place: Jx itself rejects the package's pages and layouts.
+        // Its output goes to a file, not a pipe: `jx validate` prints every issue with its own
+        // console.error and then calls process.exit(1), and a pipe whose reader is slow (a busy CI
+        // runner) loses whatever Jx had not written when it exited, at a different line every run.
+        // Writes to a file are synchronous, so the whole report is there.
         const byHand = (command: string) =>
           new Promise<{ code: number; output: string }>((resolve) => {
+            const logFile = join(repo.dir, `jx-${command}.log`);
+            const log = openSync(logFile, "w");
             const child = spawn(process.execPath, [JX_CLI, command, repo.paths.root], {
               env: jxEnv(),
+              stdio: ["ignore", log, log],
             });
-            let output = "";
-            child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
-            child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-            child.on("close", (code) => resolve({ code: code ?? 1, output }));
+            child.on("close", (code) => {
+              closeSync(log);
+              resolve({ code: code ?? 1, output: readFileSync(logFile, "utf8") });
+            });
           });
         expect((await byHand("schema")).code).toBe(0);
         const invalid = await byHand("validate");
