@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -232,6 +233,12 @@ describe("driven end to end with a stand-in package", () => {
     expect(r.code, r.output).toBe(0);
     expect(existsSync(join(keep, ".git"))).toBe(true);
     expect(existsSync(join(keep, "docs-site", "dist", "CNAME"))).toBe(true);
+    // the installed command still runs from the kept repository (its link is relative, not into the removed folder)
+    const bin = join(keep, "docs-site", "node_modules", ".bin", "docusystem");
+    expect(existsSync(bin)).toBe(true);
+    expect(
+      spawnSync(process.execPath, [bin, "--version"], { encoding: "utf8" }).stdout.trim(),
+    ).toBe("0.0.1");
     expect(
       JSON.parse(readFileSync(join(keep, "docs-site", "package.json"), "utf8")).dependencies[
         "@avunu/docusystem"

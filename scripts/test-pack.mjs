@@ -521,7 +521,11 @@ function main(argv) {
     if (options.keep) {
       rmSync(options.keep, { recursive: true, force: true });
       mkdirSync(dirname(options.keep), { recursive: true });
-      if (existsSync(consumer)) cpSync(consumer, options.keep, { recursive: true });
+      // relative links stay relative (the default makes them absolute, into a folder that is removed next),
+      // so that node_modules/.bin/docusystem of the kept repository still runs
+      if (existsSync(consumer)) {
+        cpSync(consumer, options.keep, { recursive: true, verbatimSymlinks: true });
+      }
     }
     rmSync(work, { recursive: true, force: true });
   }
