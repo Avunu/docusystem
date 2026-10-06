@@ -6,7 +6,7 @@
 import { describe, expect, test } from "vitest";
 import { firstHeading, firstParagraph, inlineText } from "../../src/lib/frontmatter.js";
 import { lintMarkdown } from "../../src/lib/lint.js";
-import { destinations, lines, withoutCode } from "../../src/lib/markdown.js";
+import { destinations, htmlAttributes, lines, withoutCode } from "../../src/lib/markdown.js";
 import { humanize, slugifyPath } from "../../src/lib/slug.js";
 import { stageMarkdown, type StageOptions } from "../../src/lib/stage.js";
 
@@ -24,6 +24,11 @@ const INPUTS: Record<string, string> = {
   "backtick pairs": "`a".repeat(N * 2),
   "unterminated anchors": "<a ".repeat(N),
   "unterminated kbd": "<kbd ".repeat(N),
+  "unterminated images": '<img src="'.repeat(N),
+  "unterminated image attributes": "<img a".repeat(N),
+  "one image with endless attributes": `<img${" a=b".repeat(N * 5)}`,
+  "unterminated comments": "<!--".repeat(N),
+  "images in comments": "<!-- <img src=a>".repeat(N),
   "unterminated autolinks": "<https://".repeat(N),
   "stars with words": "*a ".repeat(N),
   underscores: "_a".repeat(N),
@@ -48,6 +53,14 @@ const SCANNERS: Record<string, (text: string) => unknown> = {
   lintMarkdown: (text) => lintMarkdown(text, "a.md"),
   stageMarkdown: (text) => stageMarkdown(text, "a.md", options),
   destinations: (text) => destinations(text),
+  htmlAttributes: (text) =>
+    htmlAttributes(
+      text,
+      new Map([
+        ["a", ["href"]],
+        ["img", ["src", "srcset"]],
+      ]),
+    ),
   withoutCode: (text) => withoutCode(text),
   lines: (text) => lines(text),
   inlineText: (text) => inlineText(text),

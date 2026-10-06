@@ -191,3 +191,79 @@ function parseDestination(
   if (text[i] !== ")") return null;
   return { destination: { start, end, value: text.slice(start, end), angle }, next: i + 1 };
 }
+
+/** One attribute of a raw HTML tag in prose (`<img src="./logo.png">`). */
+export interface HtmlAttribute {
+  /** The tag's name and the attribute's name, in lower case. */
+  tag: string;
+  name: string;
+  /** `[start, end)` offsets of the value in the document, without its quotes. */
+  start: number;
+  end: number;
+  /** The value as written (entities are not decoded). */
+  value: string;
+}
+
+/**
+ * The text of a document with everything that is not prose blanked out, byte for byte the same
+ * length (line endings stay): fenced code blocks, inline code spans and HTML comments.
+ */
+function prose(text: string): string {
+  const endings = text.split(/(\r?\n)/).filter((_, i) => i % 2 === 1);
+  let out = "";
+  for (const [i, line] of lines(text).entries()) {
+    out += (line.code ? " ".repeat(line.text.length) : withoutCode(line.text)) + (endings[i] ?? "");
+  }
+  // An unterminated comment runs to the end of the document, as it does in CommonMark.
+  return out.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => comment.replace(/[^\r\n]/g, " "));
+}
+
+/** An opening tag's name, up to what ends it. */
+const TAG_OPEN = /<([a-z][a-z0-9-]*)(?=[\s/>])/gi;
+/** White space inside a tag: a tag may span lines, but not a blank line, which ends the paragraph it is in. */
+const SPACE = String.raw`(?:(?!\r?\n[ \t]*\r?\n)\s)`;
+/** One attribute of an opening tag, with the offsets of its value; sticky, tried where the last ended. */
+const ATTRIBUTE = new RegExp(
+  String.raw`${SPACE}+([^\s"'<>/=]+)(?:${SPACE}*=${SPACE}*(?:"([^"]{0,2000})"|'([^']{0,2000})'|([^\s"'=<>\x60]{1,2000})))?`,
+  "dy",
+);
+const TAG_END = new RegExp(String.raw`${SPACE}*/?>`, "y");
+/** The most characters one opening tag may take, as for a link destination: the bound keeps a line of unterminated tags linear. */
+const MAX_TAG = 2000;
+
+/**
+ * The attributes `wanted` names (tag name -> attribute names, all lower case) of the raw HTML tags
+ * in a document's prose, in document order, with the offsets of their values. A tag may span lines.
+ * Tags in code (fences and spans) and in comments are skipped, as is anything that is not a
+ * well-formed opening tag and an attribute without a value.
+ */
+export function htmlAttributes(
+  text: string,
+  wanted: ReadonlyMap<string, readonly string[]>,
+): HtmlAttribute[] {
+  const found: HtmlAttribute[] = [];
+  const visible = prose(text);
+  for (const open of visible.matchAll(TAG_OPEN)) {
+    const tag = open[1]!.toLowerCase();
+    const names = wanted.get(tag);
+    if (names === undefined) continue;
+    const from = open.index + open[0].length;
+    const here: HtmlAttribute[] = [];
+    let at = from;
+    for (;;) {
+      ATTRIBUTE.lastIndex = at;
+      const match = ATTRIBUTE.exec(visible);
+      if (match === null || match.index + match[0].length - from > MAX_TAG) break;
+      at = ATTRIBUTE.lastIndex;
+      const name = match[1]!.toLowerCase();
+      const group = [2, 3, 4].find((g) => match[g] !== undefined);
+      const span = group === undefined ? undefined : match.indices?.[group];
+      if (!names.includes(name) || group === undefined || span === undefined) continue;
+      here.push({ tag, name, start: span[0], end: span[1], value: match[group]! });
+    }
+    TAG_END.lastIndex = at;
+    // Not a tag (no `>` where its attributes stop): nothing in it is an attribute.
+    if (TAG_END.test(visible)) found.push(...here);
+  }
+  return found;
+}

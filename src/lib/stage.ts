@@ -12,6 +12,11 @@
 //        docs/README.md becomes `chat.md`), so Jx can resolve it as a page
 //    A link that resolves relative to the file, inside docs/, is left alone. One that resolves
 //    nowhere is left alone too: Jx reports it, and a strict build fails on it.
+//    The same rules apply to raw HTML, which a README uses for its centred logo and badges: the
+//    `href` of an `<a>`, the `src` of an `<img>`, `<video>`, `<audio>` or `<source>`, a `poster` and
+//    the files of a `srcset`. Jx checks them like Markdown's (a missing asset or a link to a page
+//    that does not exist fails a strict build), and the post-build repair never gets to see a link
+//    that Jx has already turned into text, so they have to be right before Jx reads the file.
 // 2. A leading HTML comment before the frontmatter. Hooks that stamp a copyright line into every
 //    Markdown file (Frappe apps have one) put it before the `---`, which turns the frontmatter into
 //    page text. The comment is moved behind the frontmatter.
@@ -36,7 +41,7 @@ import {
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { moveLeadingComment } from "./frontmatter.js";
 import { ensureRealDir, isInside, removeInside, walkFiles } from "./fsutil.js";
-import { destinations, lines, type Destination } from "./markdown.js";
+import { destinations, htmlAttributes, lines, type Destination } from "./markdown.js";
 import { githubUrl } from "./repo-links.js";
 import type { DocsConfig, Paths, StagedLink, StageResult } from "./types.js";
 
@@ -152,10 +157,87 @@ function github(absolute: string, image: boolean, options: StageOptions): string
   return githubUrl(options, repoPath, image).replaceAll("(", "%28").replaceAll(")", "%29");
 }
 
+/** The raw HTML attributes that hold a link or a file: tag name -> attribute names. */
+const HTML_LINKS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["a", ["href"]],
+  ["img", ["src", "srcset"]],
+  ["source", ["src", "srcset"]],
+  ["video", ["src", "poster"]],
+  ["audio", ["src"]],
+]);
+
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  lt: "<",
+  gt: ">",
+  "#39": "'",
+  "#x27": "'",
+};
+
+/** The text of an attribute value, with the entities that a path or a query may hold decoded. */
+const decodeAttr = (value: string): string =>
+  value.replace(
+    /&(amp|quot|apos|lt|gt|#39|#x27);/gi,
+    (all, name: string) => ENTITIES[name.toLowerCase()] ?? all,
+  );
+
+const encodeAttr = (value: string): string =>
+  value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+
 /**
- * Rewrites the link and image destinations of one Markdown file (`file` is its path inside docs/)
- * and moves a leading comment behind the frontmatter. `text` is `source` itself, byte for byte, when
- * there was nothing to do. Links in code (fences and spans) are never touched.
+ * Rewrites the links of the raw HTML tags in a document (`<img src>`, `<a href>` and the others of
+ * HTML_LINKS) by the rules of `resolveLink`, and reports each. A file is an image for a GitHub URL
+ * wherever it is a `src`, a `poster` or a `srcset`, and a page link for an `href`. Code, comments
+ * and tags that are not well-formed are left alone, as is a value that is not a repository path.
+ */
+function stageHtml(
+  text: string,
+  file: string,
+  options: StageOptions,
+  memo?: LinkMemo,
+): { text: string; links: StagedLink[] } {
+  // The scan reads the whole document, so a page without such a tag skips it.
+  if (!/<(?:a|img|source|video|audio)[\s/>]/i.test(text)) return { text, links: [] };
+  const links: StagedLink[] = [];
+  let out = "";
+  let at = 0;
+  // The line of `counted`, so that finding the line of each attribute does not rescan the text.
+  let line = 1;
+  let counted = 0;
+  for (const attr of htmlAttributes(text, HTML_LINKS)) {
+    const image = attr.name !== "href";
+    const pairs: Array<[string, string]> = [];
+    const rewrite = (value: string): string => {
+      const from = decodeAttr(value);
+      const to = resolveLink(from, file, image, options, memo);
+      if (to === null || to === from) return value;
+      pairs.push([from, to]);
+      return encodeAttr(to);
+    };
+    // A srcset is a list: `a.png 1x, b.png 2x`. Its candidates are the words after the start or a comma.
+    const value =
+      attr.name === "srcset"
+        ? attr.value.replace(
+            /(^|,)(\s*)([^\s,]+)/g,
+            (_, lead: string, space: string, url: string) => lead + space + rewrite(url),
+          )
+        : rewrite(attr.value);
+    if (pairs.length === 0) continue;
+    for (; counted < attr.start; counted++) if (text[counted] === "\n") line++;
+    for (const [from, to] of pairs) links.push({ file, line, from, to });
+    out += text.slice(at, attr.start) + value;
+    at = attr.end;
+  }
+  return links.length === 0 ? { text, links } : { text: out + text.slice(at), links };
+}
+
+/**
+ * Rewrites the link and image destinations of one Markdown file (`file` is its path inside docs/),
+ * and the links of its raw HTML tags, and moves a leading comment behind the frontmatter. `text` is
+ * `source` itself, byte for byte, when there was nothing to do. Links in code (fences and spans) and
+ * in HTML comments are never touched.
  */
 export function stageMarkdown(
   source: string,
@@ -186,12 +268,22 @@ export function stageMarkdown(
     links.push(...here.toReversed());
     out.push(rewritten);
   }
-  if (links.length === 0) return { text: moved ?? source, links, comment: moved !== null };
-  // Put each line back with the line ending it had (a file may mix them).
-  const endings = text.split(/(\r?\n)/).filter((_, i) => i % 2 === 1);
-  let rewritten = out[0] ?? "";
-  for (const [i, line] of out.slice(1).entries()) rewritten += (endings[i] ?? "\n") + line;
-  return { text: rewritten, links, comment: moved !== null };
+  let rewritten = text;
+  if (links.length > 0) {
+    // Put each line back with the line ending it had (a file may mix them).
+    const endings = text.split(/(\r?\n)/).filter((_, i) => i % 2 === 1);
+    rewritten = out[0] ?? "";
+    for (const [i, line] of out.slice(1).entries()) rewritten += (endings[i] ?? "\n") + line;
+  }
+  // The raw HTML is read after the Markdown, from the text with its destinations already rewritten
+  // (a line keeps its number), so the two never edit the same offsets.
+  const html = stageHtml(rewritten, file, options, memo);
+  links.push(...html.links);
+  return {
+    text: html.text,
+    links: links.toSorted((a, b) => a.line - b.line),
+    comment: moved !== null,
+  };
 }
 
 /** The lstat of a path, or null when nothing is there. */

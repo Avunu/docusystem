@@ -76,7 +76,7 @@ They render as callouts on the site and as alerts on GitHub.
 - A link or image to a file of the repository that is not a page (a source file, `LICENSE`, another README, a folder of examples) becomes a link to it on GitHub, on the repository's default branch. That works whether you wrote it from `docs/` (`../worker/README.md`) or from the repository root, as in a README copied into `docs/` (`worker/README.md`). Each rewrite is listed in the build output.
 - A link written from the repository root to a page inside `docs/` (`docs/chat.md`) is made relative to the file you are in.
 - A link to a page that does not exist, or that is a draft, is shown as plain text and fails the CI build with the file and the target named. While you fix them, `docusystem build --lenient` reports them as warnings.
-- Links between repository files in a raw HTML `href` or `src` are repaired too, but prefer Markdown links.
+- Raw HTML gets the same repairs, because a README uses it for its centred logo and its badges: the `href` of an `<a>`, the `src` of an `<img>`, `<video>`, `<audio>` or `<source>`, a `poster`, and each file of a `srcset`. `<p align="center"><img src="./assets/logo.png" alt="Logo"></p>` and `<div align="center"><a href="docs/chat.md">Chat</a></div>` pass a strict build, and each rewrite is listed in the build output. Tags in code and in HTML comments are left as written. Prefer Markdown links all the same: a raw `<a>` inside a paragraph is not kept (see [what does not render](#what-does-not-render)).
 
 ## Code
 
