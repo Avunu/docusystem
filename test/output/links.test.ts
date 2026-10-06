@@ -15,7 +15,7 @@ import {
   strayExpression,
 } from "../../src/lib/links.js";
 import type { NavData } from "../../src/lib/types.js";
-import { tempDir, writeTree } from "../support/index.js";
+import { slash, tempDir, writeTree } from "../support/index.js";
 import { copySite, drop, edit, put, swap } from "./helpers.js";
 
 const page = (body: string, title = "T"): string =>
@@ -114,7 +114,7 @@ test("fileFor finds a file, a folder's page, and says when the slash is missing"
 describe("what a built site is", () => {
   test("pages and files are listed sorted, from regular files only", () => {
     const dist = fixture();
-    expect(htmlPages(dist).map((f) => f.slice(dist.length + 1))).toEqual([
+    expect(htmlPages(dist).map((f) => slash(f.slice(dist.length + 1)))).toEqual([
       "docs/getting-started/index.html",
       "docs/index.html",
       "index.html",

@@ -28,6 +28,16 @@ npm run check
 
 `npm run test:pack -- --pm bun --runtime bun --linker isolated` exercises the other installer, runtime and linker combinations that CI runs. `--workspace` places the example in an npm-workspaces monorepo.
 
+### Tests on Windows
+
+Windows is not a supported platform for the CLI, but its unit tests run on `windows-latest` in CI (the `Unit tests on Windows (informational)` job) and are expected to pass: a failure there is a path-separator or line-ending bug, or a test that assumed POSIX. To run them yourself, use `npm test -- --project unit`, which is what the job runs.
+
+- **Line endings.** `.gitattributes` (`* text=auto eol=lf`) checks every text file out as LF, whatever `core.autocrlf` says, because Git for Windows turns it on and a lot of tests compare a file with a string, with the bytes of a starter template or with the formatter's output. Images, fonts and archives are `binary`. A clone made before that file existed has CRLF in its working tree: clone again, or commit your work and run `git rm --cached -r . && git reset --hard`.
+- **Symbolic links.** The tests create them, and Windows lets only an administrator, or an account with Developer Mode on (Settings, System, For developers), do that. The `windows-latest` runner is an administrator. Without the privilege the tests that create a link fail with `EPERM`. The links the package itself writes are junctions, which need no privilege: `test/kernel/fsutil.test.ts` tests them on every platform.
+- **Writing a test that runs everywhere.** Do not write a native path as a `/` literal or build a regular expression from one: use `slash`, `native` and `escapeRegExp` from `test/support`. A temporary folder may be on another drive than the checkout, so `path.relative` can return an absolute path. Windows has no permission bits (`WRITABLE_FILE_MODE`), no named pipes and no `bash` for the workflows' shell steps. Use `test.skipIf(isWindows)` only for what cannot exist there, say why in a comment, and keep a Windows assertion where one exists. `writeTree` writes links after everything else, because a link to a folder that does not exist yet is a link to a file on Windows and fails with `EPERM` when followed.
+
+The job is informational: `ci` does not wait for it and `continue-on-error` is set. To make it required, add `windows` to the `needs` of the `ci` job in `.github/workflows/ci.yml`, delete its `continue-on-error`, and change the two assertions of `test/workflows/ci.test.ts` that pin both.
+
 ## Rules every change keeps
 
 These hold for the whole package. A change that needs to break one is a design discussion first.

@@ -243,11 +243,39 @@ describe("messages", () => {
   });
 
   test("shellCommand quotes what a shell would split", () => {
-    expect(shellCommand(["/usr/bin/node", "/a/jx.js", "build", "/b/site"])).toBe(
+    expect(shellCommand(["/usr/bin/node", "/a/jx.js", "build", "/b/site"], "linux")).toBe(
       "/usr/bin/node /a/jx.js build /b/site",
     );
-    expect(shellCommand(["/usr/bin/node", "/a b/jx.js", "it's"])).toBe(
+    expect(shellCommand(["/usr/bin/node", "/a b/jx.js", "it's"], "linux")).toBe(
       "/usr/bin/node '/a b/jx.js' 'it'\\''s'",
+    );
+  });
+
+  // cmd.exe has no single quotes and a backslash is not a shell character there: every path of a Windows
+  // machine used to be printed as '<path>', which neither cmd.exe nor PowerShell can run.
+  test("shellCommand writes a Windows path as the word it is, and double-quotes what a Windows shell would split", () => {
+    const node = "C:\\hostedtoolcache\\windows\\node\\24.21.0\\x64\\node.exe";
+    const root = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\docs-site\\.docusystem\\site";
+    expect(shellCommand([node, "/fake/jx/bin/jx.js", "build", root], "win32")).toBe(
+      `${node} /fake/jx/bin/jx.js build ${root}`,
+    );
+    expect(
+      shellCommand(
+        [
+          "C:\\Program Files\\nodejs\\node.exe",
+          "C:\\a\\node_modules\\@jxsuite\\compiler\\jx.js",
+          'say "hi"',
+          "50%",
+        ],
+        "win32",
+      ),
+    ).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:\\a\\node_modules\\@jxsuite\\compiler\\jx.js" "say \\"hi\\"" "50%"',
+    );
+    // The POSIX rules do not depend on where they are asked for: a backslash is a shell character there.
+    expect(shellCommand(["C:\\a\\b.exe"], "linux")).toBe("'C:\\a\\b.exe'");
+    expect(shellCommand(["/usr/bin/node", "/a b/jx.js"], "darwin")).toBe(
+      "/usr/bin/node '/a b/jx.js'",
     );
   });
 });

@@ -18,16 +18,25 @@ export type TreeEntry = string | Uint8Array | { symlink: string } | { dir: true 
 /** `/`-separated paths below the root, and what is at each. */
 export type TreeSpec = Record<string, TreeEntry>;
 
-/** Writes `spec` under `root` (created if needed); folders in between are created. Returns `root`. */
+/**
+ * Writes `spec` under `root` (created if needed); folders in between are created. Returns `root`.
+ *
+ * Files and folders are written first and the links last, in the order of `spec`: a link may name a
+ * target that comes later in `spec`, and on Windows a link to a folder that does not exist yet is made
+ * a link to a file (Windows has two kinds, Node chooses by looking at the target) and then fails with
+ * `EPERM` when something follows it. The folders above a link exist before any link is made.
+ */
 export function writeTree(root: string, spec: TreeSpec): string {
   mkdirSync(root, { recursive: true });
+  const links: Array<[target: string, link: string]> = [];
   for (const [path, entry] of Object.entries(spec)) {
     const target = join(root, ...path.split("/"));
     mkdirSync(dirname(target), { recursive: true });
     if (typeof entry === "string" || entry instanceof Uint8Array) writeFileSync(target, entry);
-    else if ("symlink" in entry) symlinkSync(entry.symlink, target);
+    else if ("symlink" in entry) links.push([entry.symlink, target]);
     else mkdirSync(target, { recursive: true });
   }
+  for (const [target, link] of links) symlinkSync(target, link);
   return root;
 }
 

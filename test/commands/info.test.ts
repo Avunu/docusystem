@@ -6,7 +6,7 @@ import { navTree } from "../../src/commands/info.js";
 import type { PipelineDeps } from "../../src/lib/pipeline.js";
 import type { NavData } from "../../src/lib/types.js";
 import { version } from "../../src/lib/package-info.js";
-import { runCli, writeTree } from "../support/index.js";
+import { isWindows, runCli, slash, writeTree } from "../support/index.js";
 import { FAKE_JX, makeWorld, type World } from "./support/world.js";
 
 const holder = vi.hoisted(() => ({ deps: undefined as undefined | PipelineDeps }));
@@ -69,9 +69,13 @@ describe("docusystem info", () => {
     const { code, stdout, stderr } = await info();
     expect(code).toBe(0);
     expect(stderr).toBe("");
-    const text = stdout.replaceAll(world.dir, "<repo>").replaceAll(process.execPath, "<node>");
+    // The paths are the platform's; the expectation is written once with `/` (and the folder of the package starts with a drive on Windows).
+    const text = slash(
+      stdout.replaceAll(world.dir, "<repo>").replaceAll(process.execPath, "<node>"),
+    );
+    const root = isWindows ? "[A-Za-z]:/" : "/";
     expect(text.split("\n")).toEqual([
-      expect.stringMatching(new RegExp(`^@avunu/docusystem ${version}  \\(/.+\\)$`)),
+      expect.stringMatching(new RegExp(`^@avunu/docusystem ${version}  \\(${root}.+\\)$`)),
       expect.stringMatching(/^runtime:    (node|bun) \d+\.\d+\.\d+/),
       "jx:         @jxsuite/compiler 5.0.0, @jxsuite/parser 2.0.0, @jxsuite/runtime 4.0.3, @jxsuite/search 0.4.0",
       "contract:   workflow contract 1",

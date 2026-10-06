@@ -10,7 +10,7 @@ import {
   type PipelineResult,
 } from "../../src/lib/pipeline.js";
 import { strictFailure } from "../../src/lib/strict.js";
-import { fixture, listTree, tempDir } from "../support/index.js";
+import { fixture, listTree, slash, tempDir } from "../support/index.js";
 import { FAKE_JX, distFiles, makeWorld, publishedBefore, type World } from "./support/world.js";
 
 const recorded = (name: string): string =>
@@ -54,10 +54,12 @@ async function run(
 
 const shown = (world: World, lines: string[]): string[] =>
   lines.map((line) =>
-    line
-      .replaceAll(world.dir, "<repo>")
-      .replaceAll(process.execPath, "<node>")
-      .replaceAll(FAKE_JX, "<jx>"),
+    slash(
+      line
+        .replaceAll(world.dir, "<repo>")
+        .replaceAll(process.execPath, "<node>")
+        .replaceAll(FAKE_JX, "<jx>"),
+    ),
   );
 
 const countOf = (lines: string[], text: string): number =>

@@ -5,3 +5,11 @@ export { git, initRepo } from "./git.js";
 export { runCli, testContext, type CliResult } from "./run.js";
 export { listTree, readTree, writeTree, type TreeEntry, type TreeSpec } from "./tree.js";
 export { at, tempDir } from "./tmp.js";
+export {
+  WRITABLE_FILE_MODE,
+  canSymlink,
+  escapeRegExp,
+  isWindows,
+  native,
+  slash,
+} from "./platform.js";
