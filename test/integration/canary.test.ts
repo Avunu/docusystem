@@ -137,6 +137,49 @@ describe.skipIf(waiting.length > 0)(
         expect((await cli(repo, ["build"])).code).toBe(0);
         expect(listTree(repo.paths.dist)).toEqual(first);
       });
+
+      test("a README copied into docs/ passes a strict check: raw HTML images and links to repository files are repaired", async () => {
+        const repo = repoFrom("canary/clean", {
+          "assets/logo.png": "png",
+          LICENSE: "MIT",
+          "docs/readme-copy.md": [
+            "---",
+            "title: README copy",
+            "---",
+            "",
+            '<p align="center"><img src="./assets/logo.png" alt="Logo" width="100"></p>',
+            "",
+            '<p align="center"><img src="docs/assets/square.svg" alt="Square"></p>',
+            "",
+            '<div align="center">',
+            '  <a href="docs/guide/install.md">Install</a> | <a href="LICENSE">License</a>',
+            "</div>",
+            "",
+            "![Logo](./assets/logo.png)",
+            "",
+          ].join("\n"),
+        });
+        const { code, stdout, stderr } = await cli(repo, ["check"]);
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(stdout).toContain(
+          "stage: docs/readme-copy.md:5  ./assets/logo.png -> https://github.com/Avunu/docusystem-example/raw/main/assets/logo.png",
+        );
+        expect(stdout).toContain(
+          "stage: docs/readme-copy.md:7  docs/assets/square.svg -> assets/square.svg",
+        );
+        expect(`${stdout}\n${stderr}`).not.toMatch(/references missing asset|which does not exist/);
+        const page = readFileSync(
+          join(repo.paths.dist, "docs", "readme-copy", "index.html"),
+          "utf8",
+        );
+        const raw = "https://github.com/Avunu/docusystem-example/raw/main/assets/logo.png";
+        expect(occurrences(page, `src="${raw}"`)).toBe(2); // the HTML image and the Markdown one
+        expect(page).toContain('src="/content/docs/assets/square.svg"'); // in docs/, so Jx published it
+        expect(page).toContain('<a href="/docs/guide/install/">Install</a>');
+        expect(page).toContain(
+          '<a href="https://github.com/Avunu/docusystem-example/blob/main/LICENSE">License</a>',
+        );
+      });
     });
 
     describe("a broken tree", () => {

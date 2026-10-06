@@ -76,7 +76,7 @@ They render as callouts on the site and as alerts on GitHub.
 - A link or image to a file of the repository that is not a page (a source file, `LICENSE`, another README, a folder of examples) becomes a link to it on GitHub, on the repository's default branch. That works whether you wrote it from `docs/` (`../worker/README.md`) or from the repository root, as in a README copied into `docs/` (`worker/README.md`). Each rewrite is listed in the build output.
 - A link written from the repository root to a page inside `docs/` (`docs/chat.md`) is made relative to the file you are in.
 - A link to a page that does not exist, or that is a draft, is shown as plain text and fails the CI build with the file and the target named. While you fix them, `docusystem build --lenient` reports them as warnings.
-- Links between repository files in a raw HTML `href` or `src` are repaired too, but prefer Markdown links.
+- Raw HTML gets the same repairs, because a README uses it for its centred logo and its badges: the `href` of an `<a>`, the `src` of an `<img>`, `<video>`, `<audio>` or `<source>`, a `poster`, and each file of a `srcset`. `<p align="center"><img src="./assets/logo.png" alt="Logo"></p>` and `<div align="center"><a href="docs/chat.md">Chat</a></div>` pass a strict build, and each rewrite is listed in the build output. Tags in code and in HTML comments are left as written. Prefer Markdown links all the same: a raw `<a>` inside a paragraph is not kept (see [what does not render](#what-does-not-render)).
 
 ## Code
 
@@ -101,7 +101,7 @@ Jx drops or reshapes a few constructs that GitHub and Obsidian handle. The build
 | Table column alignment (`:---:`)                       | Columns are left-aligned             | warning                            |
 | `${...}` in a link or image address                    | Jx runs it as an expression          | warning                            |
 
-A raw `<a href>` has a second consequence: Jx writes an empty link for it, and the post-build assertion "no page has an empty link" fails in every mode, strict or lenient. Write `[text](url)` and `[![alt](image)](url)` for a badge.
+A raw `<a href>` inside a paragraph has a second consequence: Jx writes an empty link for it, and the post-build assertion "no page has an empty link" fails in every mode, strict or lenient. Write `[text](url)` and `[![alt](image)](url)` for a badge.
 
 Block HTML without a blank line inside it (`<p align="center"><img ...></p>`) works, as do `<br>`, `<img>` and HTML comments. In Markdown content `${...}` is literal in prose, code spans, code blocks and headings, so `${HOME}` stays `${HOME}`.
 

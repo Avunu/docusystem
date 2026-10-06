@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { codeSpans, destinations, lines, withoutCode } from "../../src/lib/markdown.js";
+import {
+  codeSpans,
+  destinations,
+  htmlAttributes,
+  lines,
+  withoutCode,
+} from "../../src/lib/markdown.js";
 
 test("lines marks fenced code, with the fences themselves", () => {
   const out = lines("a\n```bash\n[x](y)\n```\nb\n~~~\ncode\n~~~\nc");
@@ -44,4 +50,59 @@ test("a badge (a link around an image) gives both destinations; code and escapes
   expect(destinations("[unbalanced](a(b.md)")).toEqual([]);
   expect(destinations("[text only] (not a link)")).toEqual([]);
   expect(destinations("[empty]()").map((d) => d.value)).toEqual([""]);
+});
+
+const WANTED = new Map([
+  ["a", ["href"]],
+  ["img", ["src", "srcset"]],
+]);
+
+/** The attributes found, as `tag.name=value`, and a check that each offset points at its value. */
+function attributes(text: string): string[] {
+  const found = htmlAttributes(text, WANTED);
+  for (const a of found) expect(text.slice(a.start, a.end)).toBe(a.value);
+  return found.map((a) => `${a.tag}.${a.name}=${a.value}`);
+}
+
+test("htmlAttributes finds the wanted attributes of raw tags, with the offsets of their values", () => {
+  expect(attributes('<p align="center"><img src="./logo.png" alt="logo" width="100"></p>')).toEqual(
+    ["img.src=./logo.png"],
+  );
+  // quotes of either kind, no quotes, any case, a self-closing tag, other attributes in between
+  expect(
+    attributes(
+      `<IMG SRC='a b.png' alt=x><a data-x="1" href=docs/x.md class="c">t</a><img src="z.png"/>`,
+    ),
+  ).toEqual(["img.src=a b.png", "a.href=docs/x.md", "img.src=z.png"]);
+  // a value may hold `>` and `<` in quotes; a tag may span lines
+  expect(attributes('<img alt="a > b" src="x.png">')).toEqual(["img.src=x.png"]);
+  expect(attributes('<img\n  src="a.png"\r\n  srcset="b.png 1x, c.png 2x"\n  alt="x" />')).toEqual([
+    "img.src=a.png",
+    "img.srcset=b.png 1x, c.png 2x",
+  ]);
+  // tags and attributes that were not asked for are not reported; neither is a valueless attribute
+  expect(attributes('<iframe src="a.html"></iframe><a name="x"></a><img src alt="x">')).toEqual([]);
+});
+
+test("htmlAttributes skips code, comments and what is not a tag", () => {
+  const text = [
+    '<img src="one.png">',
+    "```html",
+    '<img src="in-fence.png">',
+    "```",
+    'Inline `<img src="in-span.png">` text <img src="two.png">',
+    '<!-- <img src="in-comment.png"> -->',
+    "<!--",
+    '<a href="in-long-comment.md">',
+    "-->",
+    '<img src="no-end.png"',
+    "",
+    "text > here",
+    '<a href="three.md" <b>',
+    "<img/src=x.png>",
+    '<img src="four.png">',
+  ].join("\n");
+  expect(attributes(text)).toEqual(["img.src=one.png", "img.src=two.png", "img.src=four.png"]);
+  // a comment that is never closed runs to the end, as in CommonMark
+  expect(attributes('<!-- <img src="a.png">\n<img src="b.png">')).toEqual([]);
 });
