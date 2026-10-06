@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in a documentation site, the CLI or the workflow does not work as documented.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: "@avunu/docusystem version"
+      description: "`npx docusystem --version`, run in your docs-site folder"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - docusystem build or check
+        - docusystem dev
+        - The reusable workflows (docs-build.yml, docs-deploy.yml)
+        - The built site (layout, styling, search, switcher)
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Node or Bun version and the package manager, for example "Node 24.21, npm 11.19".
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Paste the build output. Link a public repository or workflow run if you have one.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
