@@ -3,7 +3,7 @@ import { formatIssue, lintDocs, lintMarkdown } from "../../src/lib/lint.js";
 import { symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir, writeTree } from "../support/index.js";
-import { makeTree } from "./helpers.js";
+import { makeTree, symlinksWork } from "./helpers.js";
 
 const rules = (source: string) =>
   lintMarkdown(source, "a.md").map((i) => `${i.level}:${i.rule}@${i.line}`);
@@ -160,19 +160,22 @@ test("a missing docs folder has no issues", () => {
   expect(lintDocs(join(makeTree({}), "nope"))).toEqual([]);
 });
 
-test("links follow the symlink policy: inside the repository is read, outside is not, a cycle ends", () => {
-  const base = tempDir("docusystem-lint-");
-  writeTree(base, {
-    "outside/secret.md": "[r]: https://example.com\n",
-    "repo/docs/README.md": "# Home\n",
-    "repo/shared/note.md": "[r]: https://example.com\n",
-  });
-  const docs = join(base, "repo", "docs");
-  symlinkSync(join(base, "repo", "shared"), join(docs, "guides"));
-  symlinkSync(join(base, "outside", "secret.md"), join(docs, "leak.md"));
-  symlinkSync(docs, join(docs, "loop"));
-  const issues = lintDocs(docs, { repoRoot: join(base, "repo") });
-  expect(issues.map((i) => `${i.file}:${i.rule}`)).toEqual(["guides/note.md:reference-link"]);
-  // Without a repository root the docs folder itself is the boundary.
-  expect(lintDocs(docs)).toEqual([]);
-});
+test.skipIf(!symlinksWork)(
+  "links follow the symlink policy: inside the repository is read, outside is not, a cycle ends",
+  () => {
+    const base = tempDir("docusystem-lint-");
+    writeTree(base, {
+      "outside/secret.md": "[r]: https://example.com\n",
+      "repo/docs/README.md": "# Home\n",
+      "repo/shared/note.md": "[r]: https://example.com\n",
+    });
+    const docs = join(base, "repo", "docs");
+    symlinkSync(join(base, "repo", "shared"), join(docs, "guides"));
+    symlinkSync(join(base, "outside", "secret.md"), join(docs, "leak.md"));
+    symlinkSync(docs, join(docs, "loop"));
+    const issues = lintDocs(docs, { repoRoot: join(base, "repo") });
+    expect(issues.map((i) => `${i.file}:${i.rule}`)).toEqual(["guides/note.md:reference-link"]);
+    // Without a repository root the docs folder itself is the boundary.
+    expect(lintDocs(docs)).toEqual([]);
+  },
+);

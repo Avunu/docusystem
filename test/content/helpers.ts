@@ -5,6 +5,12 @@ import { join } from "node:path";
 import type { Paths } from "../../src/lib/types.js";
 import { tempDir, writeTree, type TreeSpec } from "../support/index.js";
 
+/**
+ * Whether the tests that create symbolic links can run here. Windows is unsupported (7.4), and
+ * directory links there need a privilege that most accounts lack (`EPERM` from `stat`).
+ */
+export const symlinksWork = process.platform !== "win32";
+
 /** A temporary folder holding `files` (path -> text, or a symlink entry); removed after the test. */
 export function makeTree(files: TreeSpec = {}): string {
   return writeTree(tempDir("docusystem-content-"), files);

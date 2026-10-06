@@ -14,7 +14,7 @@ import {
 import { symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { FrontmatterError } from "../../src/lib/frontmatter.js";
-import { makeTree } from "./helpers.js";
+import { makeTree, symlinksWork } from "./helpers.js";
 
 const page = (path: string, text: string) => ({ [path]: text });
 
@@ -145,13 +145,16 @@ test("readDocsWithProblems lists a page with unusable frontmatter as if it had n
   ]);
 });
 
-test("readDocs does not follow links: the staged copy holds real files only", () => {
-  const root = makeTree({ "README.md": "# Home\n", "real/page.md": "# Real\n" });
-  const outside = makeTree({ "other.md": "# Other\n" });
-  symlinkSync(join(outside, "other.md"), join(root, "linked.md"));
-  symlinkSync(outside, join(root, "linked-folder"));
-  expect(readDocs(root).map((f) => f.rel)).toEqual(["README.md", "real/page.md"]);
-});
+test.skipIf(!symlinksWork)(
+  "readDocs does not follow links: the staged copy holds real files only",
+  () => {
+    const root = makeTree({ "README.md": "# Home\n", "real/page.md": "# Real\n" });
+    const outside = makeTree({ "other.md": "# Other\n" });
+    symlinkSync(join(outside, "other.md"), join(root, "linked.md"));
+    symlinkSync(outside, join(root, "linked-folder"));
+    expect(readDocs(root).map((f) => f.rel)).toEqual(["README.md", "real/page.md"]);
+  },
+);
 
 test("readDocs reads Markdown extensions in any case and ignores the rest, in name order", () => {
   const root = makeTree({

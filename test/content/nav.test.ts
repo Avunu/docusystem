@@ -118,10 +118,12 @@ test("drafts are not in the navigation at all", () => {
 test("two files with one address publish the first and warn", () => {
   const { nav: n, warnings } = nav({
     "README.md": "# Home\n",
-    "Guide.md": "# One\n",
-    "guide.md": "# Two\n",
+    "Install Steps.md": "# One\n",
+    "install-steps.md": "# Two\n",
   });
-  expect(Object.keys(n.pages).filter((u) => u.includes("guide"))).toEqual(["/docs/guide/"]);
+  expect(Object.keys(n.pages).filter((u) => u.includes("install"))).toEqual([
+    "/docs/install-steps/",
+  ]);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("same address");
 });
@@ -182,16 +184,22 @@ test("writeNav counts the pages Jx will publish: once per address, hidden pages 
   const paths = pathsIn(makeTree({}));
   writeTree(paths.stagedDocs, {
     "README.md": "# Home\n",
-    "Guide.md": "# One\n",
-    "guide.md": "# Two\n",
+    "Install Steps.md": "# One\n",
+    "install-steps.md": "# Two\n",
     "secret.md": "---\nhidden: true\n---\n# Secret\n",
     "wip.md": "---\ndraft: true\n---\n# WIP\n",
   });
   const { pages, warnings, nav: written } = writeNav(paths, { name: "Example" });
   expect(pages).toBe(3);
-  expect(Object.keys(written.pages).sort()).toEqual(["/docs/", "/docs/guide/", "/docs/secret/"]);
+  expect(Object.keys(written.pages).sort()).toEqual([
+    "/docs/",
+    "/docs/install-steps/",
+    "/docs/secret/",
+  ]);
   expect(warnings).toHaveLength(1);
-  expect(JSON.parse(readFileSync(paths.navFile, "utf8")).pages["/docs/guide/"].title).toBe("One");
+  expect(JSON.parse(readFileSync(paths.navFile, "utf8")).pages["/docs/install-steps/"].title).toBe(
+    "One",
+  );
 });
 
 test("writeNav uses the project name for the home page's title when the page has none", () => {

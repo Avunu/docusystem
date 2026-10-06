@@ -23,7 +23,7 @@ import {
   type StageOptions,
 } from "../../src/lib/stage.js";
 import type { DocsConfig } from "../../src/lib/types.js";
-import { makeTree, pathsIn } from "./helpers.js";
+import { makeTree, pathsIn, symlinksWork } from "./helpers.js";
 
 /** A repository: docs/ with a few pages, and files elsewhere that the docs link to. */
 function repo(extra: Record<string, string> = {}) {
@@ -297,7 +297,7 @@ test("a file that became a folder, and a folder that became a file, replace what
   });
 });
 
-describe("the symlink policy (4.1)", () => {
+describe.skipIf(!symlinksWork)("the symlink policy (4.1)", () => {
   /** A repository with a sibling folder that is not part of it. */
   function layout(spec: Record<string, string | { symlink: string }>) {
     const base = tempDir("docusystem-stage-");
