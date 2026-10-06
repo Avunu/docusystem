@@ -59,11 +59,11 @@ docs-site/
 
 Put a Jx file at the same relative path in `docs-site/overrides/components/`, `layouts/` or `pages/` and it replaces the package's file. A path the package does not ship is an addition: a new page or layout is allowed.
 
-The safe way to start is `eject`, which copies the package's current file into `overrides/` and records where it came from:
+The safe way to start is `eject`, which copies the package's current file into `overrides/` and records where it came from. Run it in `docs-site/`:
 
 ```bash
-npx docusystem eject components/docs-footer.json
-npx docusystem eject --all
+npx @avunu/docusystem eject components/docs-footer.json
+npx @avunu/docusystem eject --all
 ```
 
 `eject` takes one or more `components/<file>`, `layouts/<file>` or `pages/<file>` arguments, or `--all`. It exits 1 for an unknown file or when an override already exists; `--force` overwrites. It records each file in `overrides/.ejected.json`:

@@ -6,7 +6,10 @@ updated: 2026-10-06
 tags: [reference, cli, commands]
 ---
 
-The binary is `docusystem`. Run it from a site folder's `package.json` scripts, with `npx docusystem`, or under Bun as `bun --bun ./node_modules/.bin/docusystem`. It needs Node 22.19.0 or newer, or Bun 1.4 or newer.
+The binary is `docusystem`, installed by the package `@avunu/docusystem`. Run it in the site folder (`docs-site/`): from its `package.json` scripts, with `npx @avunu/docusystem <command>`, or under Bun as `bun --bun ./node_modules/.bin/docusystem`. From the repository root, `./docs-site/node_modules/.bin/docusystem <command>` runs the installed copy and finds `./docs-site` on its own. It needs Node 22.19.0 or newer, or Bun 1.4 or newer.
+
+> [!IMPORTANT]
+> Always write the scope in `npx`. The unscoped name `docusystem` is not this package: in a folder where the package is not installed, `npx` with the bare name fetches and runs whatever package owns it.
 
 ```text
 docusystem <command> [options]

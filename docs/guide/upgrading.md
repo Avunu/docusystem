@@ -24,7 +24,7 @@ The two pull requests can merge in either order. Within one workflow contract (s
 ```bash
 cd docs-site
 npm update @avunu/docusystem
-npx docusystem upgrade
+npx @avunu/docusystem upgrade
 npm run check
 ```
 

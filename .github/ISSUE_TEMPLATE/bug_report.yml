@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: "@avunu/docusystem version"
-      description: "`npx docusystem --version`, run in your docs-site folder"
+      description: "`npx @avunu/docusystem --version`, run in your docs-site folder"
     validations:
       required: true
   - type: dropdown
