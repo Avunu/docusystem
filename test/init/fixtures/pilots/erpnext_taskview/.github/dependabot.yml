@@ -1,0 +1,57 @@
+version: 2
+
+# Keeps the JS dependencies current. PRs auto-merge once the required checks go green —
+# see .github/workflows/dependabot-auto-merge.yml.
+#
+# NOTE: the ecosystem key is `npm`, not `yarn`. Dependabot has no `yarn` ecosystem; the
+# npm updater reads yarn.lock (v1 here) and resolves with yarn.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      # This app is frappe-ui based, and frappe-ui is still a Tailwind 3 consumer.
+      # Tailwind 4 is a rewrite — new Oxide engine, `@tailwind` directives replaced by
+      # `@import "tailwindcss"`, and JS config superseded by CSS-first `@theme` — so
+      # nothing on frappe-ui can move past 3.4 yet. Cap it below 4 until frappe-ui ships
+      # Tailwind 4 support, then drop this block.
+      #
+      # tailwindcss is not a direct dependency here (frappe-ui declares it, and only
+      # @tailwindcss/forms + @tailwindcss/typography reach yarn.lock transitively), so
+      # this is preventative: it holds the line if tailwindcss is ever added directly,
+      # and blocks a transitive jump during a security update.
+      - dependency-name: tailwindcss
+        versions: [">= 4"]
+
+  # The documentation site (docs-site/, built from docs/): the pinned actions of
+  # .github/workflows/docs.yml and the site's own Bun packages. The cooldown holds a new release
+  # back for a week so a bad one can be yanked before it reaches the site.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docs-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: bun
+    directory: /docs-site
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docs-site-packages:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore

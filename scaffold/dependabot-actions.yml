@@ -1,0 +1,14 @@
+  # The pinned commit of the shared documentation workflows in .github/workflows/docs*.yml.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      exclude:
+        - Avunu/docusystem
+    groups:
+      docs-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
