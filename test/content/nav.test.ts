@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readDocs } from "../../src/lib/docs.js";
 import { buildNav, writeNav } from "../../src/lib/nav.js";
 import { writeTree } from "../support/index.js";
+import { INERT } from "../../src/lib/inert.js";
 import { makeTree, pathsIn } from "./helpers.js";
 
 const nav = (files: Record<string, string>, name?: string) =>
@@ -132,6 +133,17 @@ test("docs/README.md is required", () => {
   expect(() => nav({ "a.md": "# A\n" })).toThrow(/docs\/README\.md is missing/);
 });
 
+test("the missing-home message names the real Markdown folder", () => {
+  const files = readDocs(makeTree({ "a.md": "# A\n" }));
+  expect(() => buildNav(files, "x", "documentation")).toThrow(
+    /^documentation\/README\.md is missing/,
+  );
+  expect(() => buildNav(files, "x", "guide/book")).toThrow(/^guide\/book\/README\.md is missing/);
+  // the repository root as the Markdown folder: the file is README.md, not /README.md
+  expect(() => buildNav(files, "x", "")).toThrow(/^README\.md is missing/);
+  expect(() => buildNav(files, "x", ".")).toThrow(/^README\.md is missing/);
+});
+
 test("the sidebar starts every section open when the docs are small", () => {
   expect(nav({ "README.md": "# H\n", "a.md": "# A\n" }).nav.expandAll).toBe(true);
   const many: Record<string, string> = { "README.md": "# H\n" };
@@ -215,6 +227,14 @@ test("writeNav without a README says what to add, and writes nothing", () => {
   expect(existsSync(paths.navFile)).toBe(false);
 });
 
+test("writeNav passes the Markdown folder to the missing-home message", () => {
+  const paths = pathsIn(makeTree({}));
+  writeTree(paths.stagedDocs, { "a.md": "# A\n" });
+  expect(() => writeNav(paths, { name: "x" }, { folder: "documentation" })).toThrow(
+    /^documentation\/README\.md is missing/,
+  );
+});
+
 test("a page whose frontmatter is not valid YAML is listed as if it had none, with a warning that names it", () => {
   const paths = pathsIn(makeTree({}));
   writeTree(paths.stagedDocs, {
@@ -243,4 +263,20 @@ test("a home page with broken frontmatter is still the home page", () => {
   expect(warnings).toEqual([
     "README.md: the frontmatter must be a YAML mapping (key: value lines); it is listed as if it had none",
   ]);
+});
+
+test("no string of the sidebar data holds `${`: a title, a label and a description come from files a pull request changes", () => {
+  const { nav: n } = nav({
+    "README.md": "# Home\n",
+    "a.md": '---\ntitle: "A ${1}"\nnav_title: "Nav ${2}"\ndescription: "Desc ${3}"\n---\n\nText\n',
+    "b.md": "# Heading with `${4}`\n",
+    "sec ${5}/README.md": "# Section\n",
+    "sec ${5}/page.md": "# Page\n",
+  });
+  const text = JSON.stringify(n);
+  expect(text).not.toContain("${");
+  expect(text).toContain(`Nav ${INERT}2}`);
+  expect(text).toContain(`Desc ${INERT}3}`);
+  expect(text).toContain(`${INERT}4}`);
+  expect(text).toContain(`sec ${INERT}5}`);
 });

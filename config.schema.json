@@ -12,12 +12,14 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
+      "pattern": "^(?![\\s\\S]*\\$\\{)",
       "description": "Display name: header, page titles, footer."
     },
     "tagline": {
       "type": "string",
       "minLength": 1,
       "maxLength": 200,
+      "pattern": "^(?![\\s\\S]*\\$\\{)",
       "description": "One sentence on the landing page and the default page description."
     },
     "slug": {
@@ -43,6 +45,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
+      "pattern": "^(?![\\s\\S]*\\$\\{)",
       "description": "SPDX license identifier."
     },
     "branch": {
@@ -54,6 +57,7 @@
       "type": "string",
       "minLength": 1,
       "default": "../docs",
+      "pattern": "^(?![\\s\\S]*\\$\\{)",
       "description": "The folder of Markdown, relative to this file."
     },
     "theme": {

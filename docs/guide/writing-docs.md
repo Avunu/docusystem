@@ -76,7 +76,7 @@ They render as callouts on the site and as alerts on GitHub.
 - A link or image to a file of the repository that is not a page (a source file, `LICENSE`, another README, a folder of examples) becomes a link to it on GitHub, on the repository's default branch. That works whether you wrote it from `docs/` (`../worker/README.md`) or from the repository root, as in a README copied into `docs/` (`worker/README.md`). Each rewrite is listed in the build output.
 - A link written from the repository root to a page inside `docs/` (`docs/chat.md`) is made relative to the file you are in.
 - A link to a page that does not exist, or that is a draft, is shown as plain text and fails the CI build with the file and the target named. While you fix them, `docusystem build --lenient` reports them as warnings.
-- Links between repository files in a raw HTML `href` or `src` are repaired too, but prefer Markdown links.
+- Raw HTML gets the same repairs, because a README uses it for its centred logo and its badges: the `href` of an `<a>`, the `src` of an `<img>` or `<source>`, and each file of a `srcset`. Which elements raw HTML may use at all is in [Raw HTML, addresses and files](#raw-html-addresses-and-files). `<p align="center"><img src="./assets/logo.png" alt="Logo"></p>` and `<div align="center"><a href="docs/chat.md">Chat</a></div>` pass a strict build, and each rewrite is listed in the build output. Tags in code and in HTML comments are left as written. Prefer Markdown links all the same: a raw `<a>` inside a paragraph is not kept (see [what does not render](#what-does-not-render)).
 
 ## Code
 
@@ -85,25 +85,42 @@ They render as callouts on the site and as alerts on GitHub.
 - Shell commands carry no `$` or `#` prompt, so they can be pasted. Show their output in a separate `text` block.
 - Write placeholders as `<UPPER_SNAKE_CASE>` and use `example.com` for domains. Never paste credentials or customer data.
 
+## Raw HTML, addresses and files
+
+The published pages are served from the project's own domain, so what a page may carry is limited, whoever wrote it. Raw HTML in Markdown follows what GitHub shows, and everything else is an error that fails the CI build, with `file:line`:
+
+- **Elements.** Text, structure, table and image elements are fine: `<a>`, `<img>`, `<picture>`, `<br>`, `<kbd>`, `<sub>`, `<details>`, `<summary>`, `<table>` and its parts, `<p>`, `<div>`, `<span>`, headings, lists and similar. Anything that runs code, embeds or loads another page, collects input or changes the whole page is refused: `<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`, `<button>`, `<style>`, `<link>`, `<meta>`, `<base>`, `<svg>`, `<math>`, `<template>`, `<video>` and the site's own components (`<docs-header>` and the like). Put a drawing in an image file and write `![alt](drawing.svg)`; link to a video.
+- **Attributes.** Event handlers (`onclick`, `onerror`, `onload` and every other `on...`), `style`, `srcdoc`, `formaction`, `ping` and `is` are refused. `align`, `width`, `height`, `class`, `id`, `name` and the like are fine.
+- **Addresses.** A link, an image, an autolink and the `href` or `src` of raw HTML may be `http:`, `https:`, `mailto:`, `tel:` or relative (a path, `#anchor`, `?query`). `javascript:`, `data:` and every other scheme are refused, however they are spelled (`JaVa&#115;cript:`, a tab inside the word).
+- **Directives.** The `:name{...}` syntax makes elements too, so it follows the same rules: `:script[...]`, `::iframe{...}`, an `on...` attribute, `innerHTML` or a `$ref` are refused. A sentence that happens to hold `:link` or `:button` is read as a directive: put it in backticks.
+- **Files.** A file that a page links to is published beside the pages. Images, PDFs, archives and data files are fine; an HTML, script or stylesheet-transform file (`.html`, `.js`, `.xsl` and similar), an SVG with scripts or handlers, and an XML file that says it is XHTML are refused. Link to the source on GitHub instead.
+- **A tag that is not HTML**, such as the `<name>` of `docker run <name>`, written outside backticks, is a warning: the site writes it as an empty element and the text between the brackets is lost. Write it in backticks.
+
+Code, in a fenced block or in backticks, is shown and never run, so `<script>` there is fine. The check is made twice: `docusystem lint` reads your Markdown, and the build then reads the pages Jx wrote and refuses any that hold a script, an event handler, a `javascript:` address or an embedded page, **in every mode, `--lenient` included**, because that is what a reader's browser would run. Every page also carries a `Content-Security-Policy` that lets a browser run only the site's own scripts, so that a handler or a script that slipped past both checks does nothing. See [the policy](../reference/build-pipeline.md#the-content-security-policy).
+
 ## What does not render
 
-Jx drops or reshapes a few constructs that GitHub and Obsidian handle. The build reports each one as `docs/<file>:<line>` with what to write instead. The ones marked "error" lose text or leave an empty link, so a strict build (every CI run) fails on them; the others are warnings.
+Jx drops or reshapes a few constructs that GitHub and Obsidian handle. The build reports each one as `docs/<file>:<line>` with what to write instead. The ones marked "error" lose text, leave an empty link or would run code, so a strict build (every CI run) fails on them; the others are warnings.
 
-| Written                                                | What the site does                   | Build                           |
-| ------------------------------------------------------ | ------------------------------------ | ------------------------------- |
-| Reference-style links (`[text][ref]` and `[ref]: url`) | The text of every such link vanishes | error in CI                     |
-| Footnotes (`[^1]` and `[^1]: note`)                    | The marker and the note vanish       | error in CI                     |
-| Inline HTML such as `<kbd>`, `<b>` or `<a id>`         | The text stays, outside the element  | warning                         |
-| `<a href>` around an `<img>` in a paragraph (a badge)  | The image stays, the link is lost    | error, fails lenient builds too |
-| An inline `<a href>`                                   | The text stays, the link is lost     | error, fails lenient builds too |
-| A `<div>` or `<details>` with a blank line inside      | An empty element, then the content   | warning                         |
-| Task lists (`- [ ]`)                                   | Plain list items                     | warning                         |
-| Table column alignment (`:---:`)                       | Columns are left-aligned             | warning                         |
-| `${...}` in a link or image address                    | Jx runs it as an expression          | warning                         |
+| Written                                                   | What the site does                                              | Build                            |
+| --------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------- |
+| Reference-style links (`[text][ref]` and `[ref]: url`)    | The text of every such link vanishes                            | error in CI                      |
+| Footnotes (`[^1]` and `[^1]: note`)                       | The marker and the note vanish                                  | error in CI                      |
+| Inline HTML such as `<kbd>`, `<b>` or `<a id>`            | The text stays, outside the element                             | warning                          |
+| `<a href>` around an `<img>` in a paragraph (a badge)     | The image stays, the link is lost                               | error, fails lenient builds too  |
+| An inline `<a href>`                                      | The text stays, the link is lost                                | error, fails lenient builds too  |
+| A `<div>` or `<details>` with a blank line inside         | An empty element, then the content                              | warning                          |
+| Task lists (`- [ ]`)                                      | Plain list items                                                | warning                          |
+| Table column alignment (`:---:`)                          | Columns are left-aligned                                        | warning                          |
+| `${...}` in an address, a URL, an HTML tag or a directive | The build writes it inert, so the address is not what you wrote | error in CI                      |
+| A tag that is not HTML (`<name>`) outside backticks       | An empty element; the text is lost                              | warning                          |
+| Elements, attributes and addresses that run code          | See the section above                                           | error in CI, and never published |
 
 A raw `<a href>` in a paragraph, around text or around an image, is worse than a lost link: Jx writes an empty link, `<a href></a>`, and puts the text or the image after it. The post-build assertion "no page has an empty link" then fails every build, strict or lenient, and nothing is published. Under `--lenient` the lint error is printed as a warning, but the assertion still fails, so fix it either way: write `[text](url)`, and `[![alt](image)](url)` for a badge. An anchor without `href` (`<a id="top"></a>`) only warns. A badge inside a block such as `<p align="center">` is not affected.
 
-Block HTML without a blank line inside it (`<p align="center"><img ...></p>`) works, as do `<br>`, `<img>` and HTML comments. In Markdown content `${...}` is literal in prose, code spans, code blocks and headings, so `${HOME}` stays `${HOME}`.
+Block HTML without a blank line inside it (`<p align="center"><img ...></p>`) works, as do `<br>`, `<img>` and HTML comments. In Markdown content `${...}` is literal in prose, code spans, code blocks, headings and front matter, so `${HOME}` stays `${HOME}`.
+
+A `${...}` in an address (a link, an image, an autolink or a bare URL), in a raw HTML tag, in a directive or in the language of a code fence is an error. Jx evaluates every string that holds `${` as JavaScript when it builds an attribute, so a page that held one could run code in the build, in CI too. That never happens: staging writes every `${` of a page, in code and front matter as well and in every spelling that Markdown, HTML or YAML decodes to it (`&#36;{`, `$\{`), with a zero-width space between `$` and `{`, and the post-build step writes the plain text back wherever it is text. In an address or an attribute the zero-width space stays, so the link does not say what you wrote: write the address as `%24%7B...%7D`, or put the text in a code span or a code block.
 
 Run `docusystem lint` to see only these checks, with file and line, without building.
 

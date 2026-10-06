@@ -1,7 +1,7 @@
 // Runs every browser suite against sites built from the PACKED package (section 9.5 of the architecture
 // record), and writes the screenshots a person looks at.
 //
-//   bun run.ts --tarball <file> [--out <dir>] [--only axe,drawer,fences,shots,states,switcher,edge] [--keep]
+//   bun run.ts --tarball <file> [--out <dir>] [--only axe,csp,drawer,fences,shots,states,switcher,edge] [--keep]
 //
 //   --tarball  the packed package (`npm pack`)
 //   --out      where the sandboxes and the screenshots go (kept afterwards); default: a temporary folder,
@@ -10,7 +10,7 @@
 //   --keep     keep the temporary folder and print where it is
 //
 // The suites, and the site each one runs on:
-//   axe, drawer, fences, shots, states   a copy of examples/basic built with `docusystem check`
+//   axe, csp, drawer, fences, shots, states   a copy of examples/basic built with `docusystem check`
 //   switcher                             a copy of the example whose slug is a real catalog slug, so that
 //                                        the "You are here" state exists
 //   edge                                 the edge-case adopter of fixtures/ (a README that starts with a
@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const SUITES = ["axe", "drawer", "fences", "shots", "states", "switcher", "edge"] as const;
+const SUITES = ["axe", "csp", "drawer", "fences", "shots", "states", "switcher", "edge"] as const;
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -38,7 +38,7 @@ const { values } = parseArgs({
 });
 if (!values.tarball) {
   console.error(
-    "usage: bun run.ts --tarball <file> [--out <dir>] [--only axe,drawer,fences,shots,states,switcher,edge] [--keep]",
+    "usage: bun run.ts --tarball <file> [--out <dir>] [--only axe,csp,drawer,fences,shots,states,switcher,edge] [--keep]",
   );
   process.exit(2);
 }
@@ -99,11 +99,12 @@ const scaffold = (sandbox: string, ...args: string[]): boolean => {
 let exampleOk = false;
 const exampleSite = join(out, "example", "docs-site");
 const exampleDist = join(exampleSite, ".docusystem", "site", "dist");
-if (["axe", "drawer", "fences", "shots", "states", "switcher"].some((s) => wanted.has(s))) {
+if (["axe", "csp", "drawer", "fences", "shots", "states", "switcher"].some((s) => wanted.has(s))) {
   exampleOk = scaffold("example", "--example");
 }
 if (exampleOk) {
   if (wanted.has("axe")) bun(["axe.ts", exampleDist], "axe");
+  if (wanted.has("csp")) bun(["csp.ts", exampleDist], "csp");
   if (wanted.has("drawer")) bun(["drawer.ts", exampleDist], "drawer");
   if (wanted.has("fences")) bun(["fences.ts", exampleSite], "fences");
   if (wanted.has("shots")) bun(["shots.ts", exampleDist, join(shots, "pages")], "shots");

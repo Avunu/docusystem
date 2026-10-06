@@ -37,6 +37,8 @@ The seven identity keys are required and are the only facts about a project that
 | `domain`   | A host name without a scheme                        | The custom domain. Normally the repository name with hyphens, then `.avunu.net`.                                                    |
 | `license`  | String, 1 to 80 characters                          | An SPDX license identifier, shown on the landing page and in the footer.                                                            |
 
+The text keys `name`, `tagline` and `license`, and `docs`, must not contain `${`: Jx evaluates a string that holds one as JavaScript when the site is built, and these reach every page. Validation refuses them before anything is built.
+
 The slug keeps the catalog's spelling, including underscores (`erpnext_taskview`), while the domain uses hyphens (`erpnext-taskview.avunu.net`). The domain is not always the repository name: the repository `cloudflare-email-relay` is served at `cloudflare-email.avunu.net`, which `init` takes as `--domain cloudflare-email.avunu.net`. A slug spelled differently from a catalog key is an error; a slug that is not in the bundled catalog is a warning.
 
 ## Optional keys
@@ -108,10 +110,19 @@ The branch feeds "Edit this page" and the GitHub blob, tree and raw links. It is
 ```json
 {
   "jx": {
-    "$head": [{ "tagName": "meta", "attributes": { "name": "robots", "content": "noindex" } }]
+    "$head": [
+      {
+        "tagName": "meta",
+        "attributes": { "name": "google-site-verification", "content": "TOKEN-FROM-SEARCH-CONSOLE" }
+      }
+    ]
   }
 }
 ```
+
+The `$head` entries are the site-wide level of every page's `<head>`. Jx builds each page's head from three levels in turn, the site (`project.json`, where the fragment goes), the layout and the page, and an entry replaces an earlier one with the same key: a `meta` is identified by its `name` or `property`, a `link` by its `rel` and `href`, a `script` by its `src`. A fragment entry therefore replaces the package's own site-level entries of the same key (`generator`, for example), but not what the layout or a page sets. The package's base layout sets `description`, `robots`, `og:type`, `og:title`, `og:description`, `twitter:card`, `twitter:title` and `twitter:description`; the 404 page sets `robots` to `noindex, nofollow`. A fragment entry for one of those builds and passes `check`, and the layout's tag is the one in the page. Use the fragment for tags the package does not set, such as the search-engine verification above or an extra `link`.
+
+The build lists the fragment with the overrides: the `overrides:` line printed while the root is assembled, the closing `build: overrides:` line, `docusystem info` and the CI job summary all name it, and `docusystem doctor` warns that it does not follow package updates.
 
 ## The resolved config
 

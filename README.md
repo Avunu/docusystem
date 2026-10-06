@@ -25,6 +25,8 @@ npm run check
 
 `npm run dev` serves the site on `127.0.0.1:3000` the way GitHub Pages will, rebuilds when the Markdown changes and reloads the browser. `npx @avunu/docusystem doctor`, run in `docs-site/`, is the maintainer checklist as a command.
 
+A repository that already has a `docs-site/` copied from the earlier starter: see [Migrating from the earlier starter](docs/guide/migrating-from-the-starter.md). `init` reads the starter's `docs.config.json`, so the published domain is kept.
+
 ### Requirements
 
 | What                                            | Needs                                      |
@@ -52,22 +54,23 @@ your-repo/
     dependabot.yml                   keeps the package and the workflow pin current
 ```
 
-That list is closed: a project that needs more has an [override](#customizing), not another file. [`examples/basic`](examples/basic) is a complete adopting repository. A shell must not contain `components/`, `layouts/`, `pages/`, `project.json`, fonts, scripts, tests, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
+That list is closed: a project that needs more has an [override](#customizing), not another file. [`examples/basic`](examples/basic) is a complete adopting repository. A shell must not contain `components/`, `layouts/`, `pages/`, `project.json`, `data/`, fonts, scripts, tests, a `docs.config.json`, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
 
-If the repository has a `dependabot-auto-merge.yml`, `init` patches one line of it so that pull requests for the docs site stay under a person's review: a merge to the default branch publishes the site.
+If the repository has a `dependabot-auto-merge.yml`, `init` patches the condition of its job (the actor or the pull request's author is Dependabot, on one line or folded) so that pull requests for the docs site, and the ones that move the pin of the shared workflows, stay under a person's review: a merge to the default branch publishes the site.
 
 ### What a maintainer does once
 
 None of this can be done from a pull request. `init` and `docusystem doctor` print it with the project's values filled in.
 
 1. GitHub Pages source: GitHub Actions.
-2. The custom domain (the repository name with hyphens, then `.avunu.net`), and Enforce HTTPS once the certificate exists.
-3. DNS: `CNAME <label> -> avunu.github.io`, DNS only until the certificate exists.
-4. The repository variable `DOCS_SITE_ENABLED` set to `true`. Until then the publish workflow only builds and checks.
-5. Branch protection on the default branch, because every push to it publishes.
-6. `docs: https://<domain>` in the project's avunu.net catalog entry.
+2. The domain `avunu.net` verified for the GitHub organization (once, not per repository), before any DNS record: otherwise another account can claim the subdomain if the site is ever unpublished while its record remains.
+3. The custom domain (the repository name with hyphens, then `.avunu.net`), and Enforce HTTPS once the certificate exists.
+4. DNS: `CNAME <label> -> avunu.github.io`, DNS only until the certificate exists.
+5. The repository variable `DOCS_SITE_ENABLED` set to `true`. Until then the publish workflow only builds and checks.
+6. Branch protection on the default branch, because every push to it publishes.
+7. `docs: https://<domain>` in the project's avunu.net catalog entry.
 
-See [Publishing](docs/guide/publishing.md).
+When a site is retired, its `CNAME` goes first. See [Publishing](docs/guide/publishing.md).
 
 ## Configuration
 
@@ -104,7 +107,8 @@ The conventions work on GitHub, in Obsidian and on the site at once.
 - Callouts are GitHub alerts: `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`.
 - Link to pages by file, relative to the current file, with `%20` for spaces. A link to a repository file that is not a page becomes a GitHub link. A link to a page that does not exist fails the CI build.
 - Give every code block a language. A language the highlighter does not know is shown as plain code, with a warning.
-- Reference-style links and footnotes are lint errors (the site would lose text), and so is a raw `<a href>` in a paragraph, around text or an image: Jx leaves an empty link, which fails every build, `--lenient` included. Inline HTML, task lists, table alignment and `${...}` in a link address are warnings.
+- Reference-style links and footnotes are lint errors (the site would lose text), and so is a raw `<a href>` in a paragraph, around text or an image: Jx leaves an empty link, which fails every build, `--lenient` included. Inline HTML, task lists and table alignment are warnings. A `${...}` in a link address, a URL, an HTML tag or a directive is an error: Jx would run it as JavaScript, so the build writes it inert and the link does not say what you wrote.
+- Raw HTML may use only text, table and image elements. A `<script>`, `<iframe>` or `<form>`, an `on...` event handler or `style` attribute, a `javascript:` or `data:` address, an HTML or script file linked from a page and a `:script[...]` directive are errors (the pages are served from the project's domain), and every page carries a Content-Security-Policy. See [Raw HTML, addresses and files](docs/guide/writing-docs.md#raw-html-addresses-and-files).
 
 `CI=true` makes every document problem fail the build, and `check` is always strict. While you work through a first pass, `docusystem build --lenient` reports them as warnings. See [Writing documentation](docs/guide/writing-docs.md).
 
@@ -170,19 +174,21 @@ The workflows and the package share one integer, the workflow contract. The CLI 
 
 ## Troubleshooting
 
-| Symptom                                                                                           | Cause and fix                                                                                                                                           |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Exit 3: "Node ... is too old"                                                                     | The Node floor is 22.19.0. Install a current Node, or run with Bun 1.4 or newer                                                                         |
-| Exit 3 naming `uses:` lines                                                                       | The workflow pin and the installed package disagree on the workflow contract. Run `npx @avunu/docusystem upgrade` in `docs-site/`                       |
-| Exit 3 naming a process id                                                                        | Another docusystem holds the site's lock. Wait, or stop that process                                                                                    |
-| `doctor` errors on `bun.lock`, or the workflow refuses it                                         | The shared workflow installs with npm. Run `npm install`, commit `package-lock.json` and delete `bun.lock`                                              |
-| "K document problem(s) above fail the build"                                                      | A strict build collects every document problem and publishes nothing. Fix them, or use `docusystem build --lenient` locally while you work through them |
-| "Sharp is required for image optimization but failed to load" (`libstdc++`), for example on NixOS | Set `"images": "off"` in the config, or provide the library with `LD_LIBRARY_PATH` for the command                                                      |
-| `stage: docs/x.md is a symbolic link outside the repository: not published`                       | Only symbolic links whose target is inside the repository are followed. Copy the file in; under strict the skip is an error                             |
-| An assertion fails: no page has an empty link                                                     | A raw HTML `<a href>` produced an empty link. `docusystem lint` shows where; write `[text](url)`                                                        |
-| `init` exits 1 naming `--workflow-sha`                                                            | The tag of the installed version could not be resolved (offline, or no such tag). Pass the commit                                                       |
+| Symptom                                                                                              | Cause and fix                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exit 3: "Node ... is too old"                                                                        | The Node floor is 22.19.0. Install a current Node, or run with Bun 1.4 or newer                                                                                                                                            |
+| Exit 3 naming `uses:` lines                                                                          | The workflow pin and the installed package disagree on the workflow contract. Run `npx @avunu/docusystem upgrade` in `docs-site/`                                                                                          |
+| Exit 3 naming a process id                                                                           | Another docusystem holds the site's lock. Wait, or stop that process                                                                                                                                                       |
+| `doctor` errors on `bun.lock`, or the workflow refuses it                                            | The shared workflow installs with npm. Run `npm install`, commit `package-lock.json` and delete `bun.lock`                                                                                                                 |
+| "K document problem(s) above fail the build"                                                         | A strict build collects every document problem and publishes nothing. Fix them, or use `docusystem build --lenient` locally while you work through them                                                                    |
+| "Sharp is required for image optimization but failed to load" (`libstdc++`), for example on NixOS    | Set `"images": "off"` in the config, or provide the library with `LD_LIBRARY_PATH` for the command                                                                                                                         |
+| `stage: docs/x.md is a symbolic link outside the repository: not published`                          | Only symbolic links whose target is inside the repository are followed. Copy the file in; under strict the skip is an error                                                                                                |
+| An assertion fails: pages hold something that runs code, or files linked from the Markdown would run | A script, event handler, `javascript:` address, embedded page or HTML/script file in the docs. Use Markdown, an image file or a link. See [Writing documentation](docs/guide/writing-docs.md#raw-html-addresses-and-files) |
+| An assertion fails: no page has an empty link                                                        | A raw HTML `<a href>` produced an empty link. `docusystem lint` shows where; write `[text](url)`                                                                                                                           |
+| `init` exits 1 naming `--workflow-sha`                                                               | The tag of the installed version could not be resolved (offline, or no such tag). Pass the commit                                                                                                                          |
+| `check` warns of "a leftover of the copied starter", or `assemble: public/CNAME is not allowed`      | The site folder still has the starter's files. Delete them: see [Migrating from the earlier starter](docs/guide/migrating-from-the-starter.md)                                                                             |
 
-Looking inside a build: each build writes `docs-site/.docusystem/manifest.json` and `jx.log` and keeps the assembled Jx project in `docs-site/.docusystem/site/`. `docusystem info` prints the exact command to run Jx by hand, and `docusystem jx validate` runs the pinned Jx CLI on the assembled project. Jx Studio and `jx dev` are not supported on it: the Markdown lives outside the Jx root, `jx dev` needs the optional server package and Bun, and it skips the post-build fixes. `docusystem dev` serves exactly what deploys. See [Troubleshooting](docs/guide/troubleshooting.md).
+Looking inside a build: each build writes `docs-site/.docusystem/manifest.json` and `jx.log` and keeps the assembled Jx project in `docs-site/.docusystem/site/`. `docusystem info` prints the exact command to run Jx by hand, and `docusystem jx build --verbose` runs the pinned Jx build on the assembled project (`jx validate` does not work on it). Jx Studio and `jx dev` are not supported on it: the Markdown lives outside the Jx root, `jx dev` needs the optional server package and Bun, and it skips the post-build fixes. `docusystem dev` serves exactly what deploys. See [Troubleshooting](docs/guide/troubleshooting.md).
 
 ## Licensing
 

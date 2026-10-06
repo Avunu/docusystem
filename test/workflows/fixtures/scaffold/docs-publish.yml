@@ -5,7 +5,11 @@ name: Docs publish
 # Runs on push and by hand, never on a pull request, so it never sees a pull request's token.
 on:
   push:
-    paths: ["@@DOCS@@/**", "@@SITE@@/**", ".github/workflows/docs.yml", ".github/workflows/docs-publish.yml"]
+    paths:
+      - @@DOCS@@/**
+      - @@SITE@@/**
+      - .github/workflows/docs.yml
+      - .github/workflows/docs-publish.yml
   workflow_dispatch:
 
 permissions: {}

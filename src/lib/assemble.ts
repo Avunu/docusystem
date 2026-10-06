@@ -27,7 +27,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { CATALOG_URL, syncCatalog } from "./catalog.js";
 import { copyFile, ensureRealDir, removeInside, walkFiles, writeJson } from "./fsutil.js";
 import { linkJxPackages } from "./jx.js";
-import { OVERRIDE_DIRS } from "./overrides.js";
+import { hasJxFragment, OVERRIDE_DIRS } from "./overrides.js";
 import { name, version } from "./package-info.js";
 import { generateProject, packageSiteDir, readBaseProject } from "./project.js";
 import type { DocsConfig, Manifest, Origin, Paths, SkippedPath, WalkResult } from "./types.js";
@@ -221,7 +221,7 @@ export async function assemble(args: AssembleArgs, o: AssembleOptions = {}): Pro
   });
   errors.push(...project.errors.map((message) => `assemble: ${message}`));
   warnings.push(...project.warnings);
-  if (config.jx !== undefined && Object.keys(config.jx).length > 0) {
+  if (hasJxFragment(config)) {
     warnings.push(
       'overrides: the "jx" setting of docusystem.config.json is applied to project.json (unsupported: it does not follow package updates)',
     );

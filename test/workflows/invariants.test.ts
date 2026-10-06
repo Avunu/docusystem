@@ -118,6 +118,25 @@ describe("the workflows of this repository", () => {
     expect(holders.sort()).toEqual(["docs-deploy.yml#deploy", "release.yml#publish"]);
   });
 
+  test("a job that holds id-token: write runs no repository code: no checkout, no install, no npm script, no npx", () => {
+    // Every step of such a job sees the variables npm and the Pages action exchange for a credential,
+    // so code of a development dependency must never run in it (it runs in a job without id-token).
+    for (const wf of workflows) {
+      for (const [id, job] of Object.entries(wf.doc.jobs)) {
+        if (job.permissions?.["id-token"] !== "write") continue;
+        for (const step of job.steps ?? []) {
+          const where = `${wf.file}#${id}: ${step.name ?? step.uses ?? "step"}`;
+          expect(step.uses ?? "", where).not.toMatch(/^actions\/checkout@/);
+          for (const line of (step.run ?? "").split("\n")) {
+            expect(line.trim(), where).not.toMatch(
+              /^(?:npm (?:ci|install|i|run|exec|test)\b|npx\b|bunx?\b|pnpm\b|yarn\b)/,
+            );
+          }
+        }
+      }
+    }
+  });
+
   test.each(workflows.map((wf) => [wf.file, wf] as const))(
     "%s: every action is pinned to a full commit with a version comment",
     (_file, wf) => {

@@ -5,7 +5,11 @@ name: Docs
 # Nothing here can publish: the token is read-only. Publishing is docs-publish.yml.
 on:
   pull_request:
-    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml", ".github/workflows/docs-publish.yml"]
+    paths:
+      - docs/**
+      - docs-site/**
+      - .github/workflows/docs.yml
+      - .github/workflows/docs-publish.yml
 
 permissions: {}
 

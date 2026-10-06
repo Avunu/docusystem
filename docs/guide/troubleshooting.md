@@ -35,7 +35,7 @@ Exit 3, naming the process id. Two builds of one site would write the same `.doc
 - A workflow that differs from its scaffold, including a copy of the earlier starter's long workflow.
 - A `package.json` with a `postinstall` script, or with a dependency on any `@jxsuite/*` package. That is a copy of the earlier starter, and the new shell has neither.
 
-Read what is there, then pass `--force` to let `init` replace it. `--dry-run` shows the diff first.
+Read what is there, then pass `--force` to let `init` replace it. `--dry-run` shows the diff first. For a repository that copied the starter's `docs-site/`, the whole path is in [Migrating from the earlier starter](migrating-from-the-starter.md).
 
 ## "K document problem(s) above fail the build"
 
@@ -45,7 +45,7 @@ docusystem: 3 document problem(s) above fail the build. Fix the documents, or ru
 
 The strict build (`CI=true`, and always `check`) collects every document problem before it stops: lint errors, Jx output lines that start with `Content`, `Warning:` or `Error`, and skipped symbolic links. They are printed once, above this line, with `file:line` where there is one, and nothing is published. Fix them in the Markdown. While you work through a long list locally, `docusystem build --lenient` prints the same problems as warnings and still builds. CI has no lenient setting.
 
-Problems that are never downgraded, even by `--lenient`: a config error, a failing `jx`, a failed output assertion and the contrast gate.
+Problems that are never downgraded, even by `--lenient`: a config error, a failing `jx`, a failed output assertion and the contrast gate. A lenient build can therefore print warnings and still fail on an assertion. The `assert:` line names the page and its Markdown file, and the closing lines say that leniency does not reach it: if a `lint:` warning above is about the same file, that warning is the cause (see [an empty link](#an-empty-link-fails-the-build)).
 
 ## A link is plain text on the page
 
@@ -55,9 +55,27 @@ The build named the link. Its target does not exist, is a draft, or is not in th
 
 The `lint:` stage reports them as errors with `file:line`: "Reference-style links are not rendered: every link that uses this definition loses its text. Write the links inline" and "Footnotes are not rendered: the marker and the note both disappear". The site cannot show them and would lose text. Write the links inline, `[text](url)`, and put a footnote in the sentence or in a callout. See [what does not render](writing-docs.md#what-does-not-render). `docusystem lint` runs just these checks.
 
+## Raw HTML, a link or a file is refused
+
+```text
+lint: error: docs/guide/x.md:12  <iframe> is not allowed in documentation: it embeds another page. ...
+assert: FAIL: pages hold something that runs code or embeds another page: /docs/guide/x/ (<img onerror="...">)
+assert: FAIL: files linked from the Markdown would run on the site's domain when opened: /content/docs/a.html (a .html file, ...)
+```
+
+The pages are served from the project's own domain, so a page may not carry a script, an event handler, an embedded page, a `javascript:` or `data:` address, or an HTML or script file. The `lint:` line names the file and line; the `assert:` lines name the page and the construct and are never downgraded by `--lenient`. Fix the Markdown: use Markdown for what it can say, an image file for a drawing, a link for a video or a page, and backticks for a tag or a `:name` that is only text. See [Raw HTML, addresses and files](writing-docs.md#raw-html-addresses-and-files). The `assert:` line `pages without a sound Content-Security-Policy` means a page has something before its `<head>` that a policy cannot govern, or no `<head>` of its own; the package's layouts never do that, so look at the layout override that wrote the page.
+
 ## An empty link fails the build
 
-The `assert:` stage prints `FAIL` for the assertion that no page has an empty link (an `<a href>` with no text, image or `aria-label`). Jx writes an empty link followed by the text (or the image) for a raw HTML anchor in a paragraph, and the assertion fails in every mode, including `--lenient`. The `lint:` stage reports the anchor first, with `file:line` (an error, printed as a warning under `--lenient`), and `docusystem lint` lists it without building. Replace the raw anchor with a Markdown link, `[text](url)`. Badges are `[![alt](image)](url)`.
+The `assert:` stage prints `FAIL` for the assertion that no page has an empty link (an `<a href>` with no text, image or `aria-label`). Jx writes an empty link followed by the text (or the image) for a raw HTML anchor in a paragraph (an anchor inside a `<div>` or `<p>` block keeps its link), and the assertion fails in every mode, including `--lenient`. The `lint:` stage reports the anchor first, with `file:line` (an error, printed as a warning under `--lenient`), and `docusystem lint` lists it without building. Replace the raw anchor with a Markdown link, `[text](url)`. Badges are `[![alt](image)](url)`.
+
+## A `${...}` in a link or a tag is an error
+
+```text
+lint: error: docs/x.md:12  A ${...} in a link address, a URL, an HTML tag, a directive or the language of a code fence is run by Jx as JavaScript when the site is built. ...
+```
+
+Jx runs every string that holds `${` as JavaScript when it builds a link, an image or an HTML attribute. The build therefore writes the text inert (a hidden zero-width space between `$` and `{`), so nothing runs, but the link or attribute no longer says what you wrote, and the strict build fails so that you and the reviewer see it. Write the address as `%24%7B...%7D`, or put the text in a code span or a code block, where `${HOME}` stays as written. See [what does not render](writing-docs.md#what-does-not-render).
 
 ## A symbolic link is not published
 
@@ -99,11 +117,26 @@ The build prints the `images: "off"` hint itself when Jx's output mentions `shar
 
 ## Hooks rewrite `docs/`
 
-A pre-commit hook that stamps a copyright comment above the front matter does not break the build, because staging moves the comment, but GitHub and Obsidian then show the front matter as text. Exclude `^docs/` from that hook. `docusystem doctor` warns about a `.pre-commit-config.yaml` with a copyright hook and mentions formatter configs that would reformat `docs/`. The site folder itself needs no exclusions: it holds only the config, `package.json` and the lockfile.
+A pre-commit hook that stamps a copyright comment above the front matter does not break the build, because staging moves the comment, but GitHub and Obsidian then show the front matter as text. Exclude `^docs/` from that hook. `docusystem doctor` warns about a `.pre-commit-config.yaml` with a copyright hook and mentions formatter configs that would reformat `docs/`.
+
+The files that `init` writes are meant to pass the repository's own format check as they are, so that the pull request that adopts the system does not turn the repository's CI red:
+
+- The caller workflows list their `paths:` one entry per line. A one-line list is re-wrapped by oxfmt and prettier as soon as it is wider than their print width, and a block list is stable at any width and with any quote style.
+- The two JSON files of the site folder are indented the way the repository asks for JSON: `useTabs` and `tabWidth` in `.oxfmtrc.json` or `.prettierrc`, else `.editorconfig`, else the indentation of the root `package.json`, else two spaces. An existing file keeps its own.
+
+`init` can only read what is written down. A formatter that is configured in a script, or by a rule `init` does not know, can still disagree. If the repository's format check fails on `docs-site/` or on the two workflows, run the formatter over them once (`npx oxfmt docs-site .github/workflows`), or leave the folder alone by ignoring it, for example `"ignorePatterns": ["docs-site"]` in `.oxfmtrc.json`. The site folder holds only the config, `package.json`, the lockfile and the git-ignored `dist/` and `.docusystem/`, so nothing is lost by ignoring it. Keep the lockfile out of the formatter in any case (`package-lock.json` is in most `ignorePatterns` already).
 
 ## A leftover from the starter
 
-`preflight` warns when the site folder contains `components/`, `layouts/`, `pages/`, `project.json` or `scripts/`, which are leftovers of an earlier copy-the-template starter. Delete them: the package supplies all of them. If you want to change one, use [an override](overrides.md).
+`preflight` warns when the site folder contains `components/`, `layouts/`, `pages/`, `project.json`, `scripts/`, `data/`, `docs.config.json`, `README.md`, or a `public/` that holds copies of the package's own files (its fonts, brand marks and favicon), which are leftovers of an earlier copy-the-template starter. Delete them: the package supplies all of them, and the configuration is `docusystem.config.json` now. If you want to change one, use [an override](overrides.md). A `public/` of your own (a logo, an og image) is not a leftover. `doctor` lists the leftovers in one warning, adds a warning for the starter's `engines.bun` entry and an error for `bun.lock`, and `init` prints the same list. The steps are in [Migrating from the earlier starter](migrating-from-the-starter.md).
+
+## `public/CNAME` is not allowed
+
+```text
+assemble: public/CNAME is not allowed: the file is generated from `domain` in docusystem.config.json, delete it
+```
+
+The starter committed a `CNAME`; the package writes it from `domain` on every build. Delete `docs-site/public/CNAME`. If the starter's whole `public/` folder is still there, `check` also warns that it holds copies of the package's own files and, because each one replaces the package's file, prints an `overrides:` line for every copy: delete the folder unless it holds files you added.
 
 ## Looking inside a build
 
@@ -115,16 +148,19 @@ When something is wrong and the message is not enough, the build keeps everythin
 - `npx @avunu/docusystem info`, run in `docs-site/`, prints versions, folders, the resolved branch, overrides and the exact command to run Jx by hand; `--json` and `--nav` print it as JSON and the sidebar tree.
 - When Jx fails, the build prints `docusystem: jx build failed. The assembled project is <root>; run: <execPath> <jx.js> build <root>`.
 
-To use Jx's own tools on the assembled root, run them through the pinned Jx, in `docs-site/`:
+To see what Jx itself prints for the assembled root, run it through the pinned Jx, in `docs-site/`:
 
 ```bash
 cd docs-site
-npx @avunu/docusystem jx validate
+npx @avunu/docusystem jx build --verbose
 ```
 
-From the repository root, run the installed copy instead: `./docs-site/node_modules/.bin/docusystem jx validate` finds `./docs-site` on its own, and `--site <folder>` names another site folder.
+From the repository root, run the installed copy instead: `./docs-site/node_modules/.bin/docusystem jx build --verbose` finds `./docs-site` on its own, and `--site <folder>` names another site folder.
 
-`docusystem jx` assembles the project root (and never builds), then runs the pinned Jx CLI as `jx <arguments> <root>`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. It exits with Jx's exit code.
+`docusystem jx` assembles the project root (docusystem itself builds nothing), then runs the pinned Jx CLI as `jx <arguments> <root>`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. It exits with Jx's exit code. The root is assembled from empty on every run, so what Jx writes into it lasts only until the next docusystem command, and `jx build` writes to `<root>/dist`, not to `<site>/dist`, and skips the post-build steps.
+
+> [!WARNING]
+> `jx validate` does not work on the generated root, so `docusystem jx validate` is not a check to run. It fails with `project.schema.json not found` and tells you to run `jx schema`, and `docusystem jx schema` cannot help: the next `docusystem jx` run assembles the root again and the schema is gone. Run by hand after `jx schema`, Jx's validator reports the package's own pages and layouts as invalid, because its schema for a `Function` entry has no `timing` key and the package's pages use `timing: "compiler"`, which Jx's compiler accepts. Nothing in that report is yours to fix. Use `docusystem check` for the checks that apply to a site.
 
 > [!NOTE]
 > Jx Studio and `jx dev` are not supported on the assembled root. The Markdown lives outside the Jx project root, `jx dev` needs the optional `@jxsuite/server` package and Bun, and it skips the post-build fixes. `docusystem dev` serves exactly what deploys.

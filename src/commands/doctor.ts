@@ -9,18 +9,21 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import {
+  actionsBranchPrefix,
+  hasActionsExclusion,
   hasSiteExclusion,
   isAutoMergeWorkflow,
+  patchAutoMerge,
   siteBranchPrefix,
   withoutComments,
 } from "../lib/automerge.js";
 import { ConfigError, findRepoRoot, findSiteDir, pathsFor, readConfig } from "../lib/config.js";
 import { dependabotFile, readDependabotEntries, type DependabotEntry } from "../lib/dependabot.js";
 import { isInside } from "../lib/fsutil.js";
-import { overrideFindings } from "../lib/overrides.js";
+import { hasJxFragment, JX_FRAGMENT, overrideFindings } from "../lib/overrides.js";
 import { major, REPOSITORY, version } from "../lib/package-info.js";
 import { COMMIT } from "../lib/pin.js";
-import { checkSlug } from "../lib/preflight.js";
+import { checkSlug, starterLeftovers } from "../lib/preflight.js";
 import type { DocsConfig, Finding } from "../lib/types.js";
 import {
   folderGlob,
@@ -38,9 +41,6 @@ const posix = (path: string): string => path.split(sep).join("/");
 
 /** The files of the Markdown folder that make a home page. */
 const HOME_PAGES = ["README.md", "readme.md", "index.md"];
-
-/** Folders and files of the copied starter that a shell does not have (2.4). */
-const STARTER_LEFTOVERS = ["components", "layouts", "pages", "project.json", "scripts"];
 
 /** Formatter configurations that may reformat the Markdown of `docs/`. */
 const FORMATTER_CONFIGS = [
@@ -394,24 +394,51 @@ function checkDependabot(
 
 function checkAutoMerge(repoRoot: string, siteRel: string, add: Add): void {
   const prefix = siteBranchPrefix(siteRel);
+  const siteClause = `!startsWith(github.head_ref, '${prefix}')`;
+  const actionsClause = `!startsWith(github.head_ref, '${actionsBranchPrefix}')`;
+  // the pull request that moves the pin of the shared workflows is one of Dependabot's github-actions
+  // ones, and a merge publishes the site with the new workflow code
+  const pin =
+    `Dependabot's github-actions pull requests move the commit pin of the shared workflows, and a merge to the default branch publishes the site with the new workflow code: ` +
+    `add ${actionsClause} to the condition`;
   let found = false;
   for (const [file, text] of workflowFiles(repoRoot)) {
     if (!isAutoMergeWorkflow(text)) continue;
     found = true;
     const where = `${WORKFLOWS}/${file}`;
-    if (hasSiteExclusion(text, siteRel)) {
-      add("ok", `${where}: leaves the site's Dependabot pull requests to a person`);
+    const site = hasSiteExclusion(text, siteRel);
+    const actions = hasActionsExclusion(text);
+    if (site && actions) {
+      add(
+        "ok",
+        `${where}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
+      );
+      continue;
+    }
+    // `init` is named only when it would do the fix: otherwise the finding says what to do by hand
+    const patch = patchAutoMerge(text, siteRel);
+    const fixed = (fix: string): string => {
+      if (!patch.changed) {
+        return `\`docusystem init\` cannot patch it: ${patch.note ?? "edit its condition by hand"}`;
+      }
+      return patch.note === undefined
+        ? `${fix} (\`docusystem init\` does)`
+        : `${fix} (\`docusystem init\` does what it can; the rest by hand: ${patch.note})`;
+    };
+    const alsoPin = actions ? "" : `; also, ${pin}`;
+    if (site) {
+      add("error", `${where} does not skip the github-actions pull requests: ${fixed(pin)}`);
     } else if (withoutComments(text).includes(`dependabot/bun/${siteRel}`)) {
       add(
         "error",
         `${where} excludes dependabot/bun/${siteRel}, but the site's lockfile makes Dependabot's ecosystem npm: its branches are ${prefix}/...  ` +
-          `Change the exclusion to !startsWith(github.head_ref, '${prefix}') (\`docusystem init\` does)`,
+          fixed(`Change the exclusion to ${siteClause}${alsoPin}`),
       );
     } else {
       add(
         "error",
         `${where} merges Dependabot's pull requests but does not skip the site's: a merge to the default branch publishes the site. ` +
-          `Add !startsWith(github.head_ref, '${prefix}') to the condition (\`docusystem init\` does)`,
+          fixed(`Add ${siteClause} to the condition${alsoPin}`),
       );
     }
   }
@@ -420,9 +447,18 @@ function checkAutoMerge(repoRoot: string, siteRel: string, add: Add): void {
 
 // ---- overrides and the rest of the repository ----
 
-function checkOverrides(site: string, add: Add): void {
+function checkOverrides(site: string, config: DocsConfig | null, add: Add): void {
+  // The `jx` setting changes the package's project.json and is outside semver: nothing tells whether a
+  // package update still merges with it, so it is a warning, like an override that was not ejected.
+  const jx = hasJxFragment(config);
+  if (jx) {
+    add(
+      "warning",
+      `overrides: ${JX_FRAGMENT} is outside semver and does not follow package updates: check the pages it changes after each upgrade`,
+    );
+  }
   if (!existsSync(join(site, "overrides"))) {
-    add("ok", "overrides: none; the site follows the package");
+    if (!jx) add("ok", "overrides: none; the site follows the package");
     return;
   }
   let findings: Finding[];
@@ -480,19 +516,25 @@ function checkRepo(site: string, siteRel: string, repoRoot: string, add: Add): v
         `${siteRel}/package.json has ${starter.join(", ")}: it is a copy of the starter. The package picks and pins Jx and runs no install script, so a shell has neither. \`docusystem init --force\` rewrites it`,
       );
     }
+    if (record(manifest.engines).bun !== undefined) {
+      add(
+        "warning",
+        `${siteRel}/package.json has an engines.bun entry: it is the starter's, which needed Bun. The shell runs on Node 22.19.0 or newer (and on Bun); delete the entry (\`docusystem init --force\` removes it)`,
+      );
+    }
   }
-  const leftovers = STARTER_LEFTOVERS.filter((name) => existsSync(join(site, name)));
+  const leftovers = starterLeftovers(site).map((leftover) => leftover.name);
   if (leftovers.length > 0) {
     add(
       "warning",
-      `${siteRel}/ has ${leftovers.join(", ")}: leftovers of the copied starter. The package owns components, layouts, pages and the project file; remove them (an intended change belongs in overrides/)`,
+      `${siteRel}/ has ${leftovers.join(", ")}: leftovers of the copied starter. The package owns the components, layouts, pages, project file, fonts and catalog and runs the build itself, and the configuration is docusystem.config.json now; remove them (an intended change belongs in overrides/)`,
     );
   }
   const formatters = FORMATTER_CONFIGS.filter((name) => existsSync(join(repoRoot, name)));
   if (formatters.length > 0) {
     add(
       "ok",
-      `note: ${formatters.join(", ")} may reformat the Markdown of docs/; exclude the folder if that is not wanted (it is not checked here)`,
+      `note: ${formatters.join(", ")} may reformat the Markdown of docs/; exclude the folder if that is not wanted. The same formatter also checks ${siteRel}/ and the caller workflows: init writes them the way oxfmt and prettier print them, but if the repository's format check fails on them, run the formatter over them or ignore ${siteRel} in its configuration (none of this is checked here)`,
     );
   }
 }
@@ -514,7 +556,7 @@ export function diagnose(siteDir: string): Finding[] {
   const ecosystem = checkLockfile(site, siteRel, add);
   checkDependabot(repoRoot, siteRel, ecosystem, add);
   checkAutoMerge(repoRoot, siteRel, add);
-  checkOverrides(site, add);
+  checkOverrides(site, config, add);
   checkRepo(site, siteRel, repoRoot, add);
   return out;
 }

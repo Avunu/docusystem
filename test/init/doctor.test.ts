@@ -2,14 +2,14 @@
 // state that does not, including the two false OKs the judges found. The repository under test is
 // the one init writes (so init and doctor are checked against each other), changed one thing at a
 // time. WP1's config module and WP2's overrides are the fakes of ./support/neighbours.ts until merged.
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { diagnose, run } from "../../src/commands/doctor.js";
 import { runInit } from "../../src/commands/init.js";
 import { overrideFindings } from "../../src/lib/overrides.js";
 import type { Finding } from "../../src/lib/types.js";
-import { runCli, testContext } from "../support/index.js";
+import { REPO_ROOT, runCli, testContext } from "../support/index.js";
 import { readFixture } from "./support/fixtures.js";
 import {
   copyPilotGithub,
@@ -382,16 +382,18 @@ describe("workflows", () => {
       [PUBLISH, "push"],
     ])("%s: a paths filter that lacks a folder is an error", async (file, event) => {
       const root = await initialisedRepo();
-      rewrite(root, file, (text) => text.replace('"docs-site/**"', '"website/**"'));
+      rewrite(root, file, (text) => text.replace("- docs-site/**", "- website/**"));
       expect(errors(root)).toContain(`on.${event}.paths does not list "docs-site/**"`);
       const docs = await initialisedRepo();
-      rewrite(docs, file, (text) => text.replace('"docs/**"', '"guides/**"'));
+      rewrite(docs, file, (text) => text.replace("- docs/**", "- guides/**"));
       expect(errors(docs)).toContain(`on.${event}.paths does not list "docs/**"`);
     });
 
     test("no paths filter at all disagrees with nothing", async () => {
       const root = await initialisedRepo();
-      rewrite(root, DOCS, (text) => text.replace(/\n {4}paths: .*\n/, "\n"));
+      const bare = (text: string): string => text.replace(/\n {4}paths:\n(?: {6}- .*\n)+/, "\n");
+      rewrite(root, DOCS, bare);
+      expect(readIn(root, DOCS)).not.toContain("paths:");
       expect(at(root, "error")).toEqual([]);
     });
   });
@@ -543,6 +545,41 @@ describe("the auto-merge workflow", () => {
     expect(errors(root)).toContain(
       "!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')",
     );
+    // init would do it, and says so
+    expect(errors(root)).toContain("(`docusystem init` does)");
+  });
+
+  test("a shape init cannot patch: no promise that init does it, and the finished line to paste", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "if: ${{ github.actor == 'dependabot[bot]' }}",
+        `if: "github.actor == 'dependabot[bot]'"`,
+      ),
+    );
+    const message = errors(root);
+    expect(message).toContain(
+      `${file} merges Dependabot's pull requests but does not skip the site's`,
+    );
+    expect(message).not.toContain("`docusystem init` does");
+    expect(message).toContain("`docusystem init` cannot patch it");
+    expect(message).toContain("line 6: `github.actor == 'dependabot[bot]'`");
+    expect(message).toContain(
+      "if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
+    );
+  });
+
+  test("the pull request author's condition, the form zizmor recommends, is patched by init and so promised", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "github.actor == 'dependabot[bot]'",
+        "github.event.pull_request.user.login == 'dependabot[bot]'",
+      ),
+    );
+    expect(errors(root)).toContain("(`docusystem init` does)");
   });
 
   test("false OK of the judges: an exclusion of the bun branches does not count", async () => {
@@ -559,7 +596,7 @@ describe("the auto-merge workflow", () => {
     );
   });
 
-  test("an exclusion of exactly the site's npm branches is ok", async () => {
+  test("an exclusion of the site's npm branches alone is an error: the pin of the shared workflows moves in a github-actions pull request", async () => {
     const root = await initialisedRepo();
     writeFileSync(
       join(root, file),
@@ -568,9 +605,53 @@ describe("the auto-merge workflow", () => {
         "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
       ),
     );
+    expect(errors(root)).toContain(`${file} does not skip the github-actions pull requests`);
+    expect(errors(root)).toContain("move the commit pin of the shared workflows");
+    expect(errors(root)).toContain(
+      "add !startsWith(github.head_ref, 'dependabot/github_actions/') to the condition",
+    );
+    expect(at(root, "error")).toHaveLength(1);
+  });
+
+  test("an exclusion of the github-actions branches alone is the site's error", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "'dependabot[bot]' }}",
+        "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
+      ),
+    );
+    expect(errors(root)).toContain("does not skip the site's");
+    expect(errors(root)).not.toContain("also,");
+  });
+
+  test("a workflow that skips neither is told both, and a bun exclusion also gets the pin", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(join(root, file), AUTOMERGE);
+    expect(errors(root)).toContain("also, Dependabot's github-actions pull requests move");
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "'dependabot[bot]' }}",
+        "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/bun/docs-site') }}",
+      ),
+    );
+    expect(errors(root)).toContain("also, Dependabot's github-actions pull requests move");
+  });
+
+  test("an exclusion of exactly the site's npm branches and of the github-actions ones is ok", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "'dependabot[bot]' }}",
+        "'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
+      ),
+    );
     expect(at(root, "error")).toEqual([]);
     expect(all(root).map((f) => f.message)).toContain(
-      `${file}: leaves the site's Dependabot pull requests to a person`,
+      `${file}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
     );
   });
 
@@ -607,8 +688,27 @@ describe("the auto-merge workflow", () => {
     );
   });
 
-  test("what init patches, doctor accepts", async () => {
-    const root = makeRepo({ files: { [file]: AUTOMERGE } });
+  const FOLDED = AUTOMERGE.replace(
+    "if: ${{ github.actor == 'dependabot[bot]' }}",
+    [
+      "if: >-",
+      "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+      "      github.repository == 'Avunu/frappe-nix'",
+    ].join("\n"),
+  );
+
+  test.each([
+    ["the standard condition", AUTOMERGE],
+    [
+      "the pull request author's condition",
+      AUTOMERGE.replace(
+        "github.actor == 'dependabot[bot]'",
+        "github.event.pull_request.user.login == 'dependabot[bot]'",
+      ),
+    ],
+    ["a folded multi-line condition", FOLDED],
+  ])("what init patches, doctor accepts: %s", async (_shape, workflow) => {
+    const root = makeRepo({ files: { [file]: workflow } });
     await exec((ctx) => runInit(ctx, { resolvePin: () => ({ sha: SHA, reason: null }) }), {
       command: "init",
       cwd: root,
@@ -618,8 +718,14 @@ describe("the auto-merge workflow", () => {
     writeFileSync(join(root, "docs/README.md"), "# x\n");
     expect(at(root, "error")).toEqual([]);
     expect(all(root).map((f) => f.message)).toContain(
-      `${file}: leaves the site's Dependabot pull requests to a person`,
+      `${file}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
     );
+  });
+
+  test("a folded multi-line condition is an error with the promise that init does it", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(join(root, file), FOLDED);
+    expect(errors(root)).toContain("(`docusystem init` does)");
   });
 });
 
@@ -670,6 +776,35 @@ describe("overrides", () => {
       "overrides: none; the site follows the package",
     );
     expect(overrideFindings).not.toHaveBeenCalled();
+  });
+
+  test("the jx setting is not 'none': it is a warning, with or without an overrides folder", async () => {
+    const root = await initialisedRepo();
+    rewrite(root, "docs-site/docusystem.config.json", (text) =>
+      text.replace(
+        /\n}\n$/,
+        ',\n  "jx": { "$head": [{ "tagName": "meta", "attributes": { "name": "author", "content": "Avunu" } }] }\n}\n',
+      ),
+    );
+    const message =
+      'overrides: the "jx" setting of docusystem.config.json (merged into project.json) is outside semver and does not follow package updates: check the pages it changes after each upgrade';
+    expect(at(root, "error")).toEqual([]);
+    expect(warnings(root)).toContain(message);
+    expect(all(root).map((f) => f.message)).not.toContain(
+      "overrides: none; the site follows the package",
+    );
+
+    mkdirSync(join(root, "docs-site/overrides/components"), { recursive: true });
+    writeFileSync(join(root, "docs-site/overrides/components/docs-footer.json"), "{}\n");
+    vi.mocked(overrideFindings).mockReturnValueOnce([
+      { level: "ok", message: "overrides/components/docs-footer.json is current" },
+    ]);
+    const findings = all(root);
+    expect(findings).toContainEqual({ level: "warning", message });
+    expect(findings).toContainEqual({
+      level: "ok",
+      message: "overrides/components/docs-footer.json is current",
+    });
   });
 
   test("what the assemble package finds is reported with its levels", async () => {
@@ -745,6 +880,41 @@ describe("the rest of the repository", () => {
     );
   });
 
+  test("the rest of what the starter copied is a warning too: data, its configuration file, its README and a public/ of the package's own files", async () => {
+    const root = await initialisedRepo();
+    mkdirSync(join(site(root), "data"));
+    mkdirSync(join(site(root), "public"));
+    writeFileSync(join(site(root), "docs.config.json"), "{}");
+    writeFileSync(join(site(root), "README.md"), "# Documentation site\n");
+    // a public/ of the shell's own is not a leftover ...
+    writeFileSync(join(site(root), "public", "og.png"), "mine");
+    expect(warnings(root)).toContain(
+      "docs-site/ has data, docs.config.json, README.md: leftovers of the copied starter",
+    );
+    expect(warnings(root)).not.toContain("public");
+    // ... but the package's own files are
+    writeFileSync(
+      join(site(root), "public", "favicon.svg"),
+      readFileSync(join(REPO_ROOT, "site", "public", "favicon.svg")),
+    );
+    expect(warnings(root)).toContain(
+      "docs-site/ has data, docs.config.json, README.md, public: leftovers of the copied starter",
+    );
+    expect(errors(root)).toBe("");
+  });
+
+  test("an engines.bun entry is a warning of its own, and an engines.node is not", async () => {
+    const root = await initialisedRepo();
+    const file = join(site(root), "package.json");
+    const pkg = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...pkg, engines: { node: ">=22" } }));
+    expect(warnings(root)).toBe("");
+    writeFileSync(file, JSON.stringify({ ...pkg, engines: { node: ">=22", bun: ">=1.4.0" } }));
+    expect(warnings(root)).toContain("docs-site/package.json has an engines.bun entry");
+    expect(warnings(root)).not.toContain("copy of the starter");
+    expect(errors(root)).toBe("");
+  });
+
   test("a package.json that is the starter's: a postinstall script or a Jx dependency is a warning", async () => {
     const root = await initialisedRepo();
     writeFileSync(
@@ -777,11 +947,14 @@ describe("the rest of the repository", () => {
     expect(note?.message).toContain(
       ".oxfmtrc.json, .prettierrc may reformat the Markdown of docs/",
     );
+    // and that it checks the shell as well: the folder it can be told to ignore is named
+    expect(note?.message).toContain("also checks docs-site/ and the caller workflows");
+    expect(note?.message).toContain("ignore docs-site in its configuration");
   });
 });
 
 describe.each(PILOTS)("init, then doctor, in a copy of %s's .github", (pilot) => {
-  test("no errors; the only warnings are cooldowns that do not exclude the package or the workflow repository", async () => {
+  test("no errors; the only warning is a github-actions cooldown that init leaves to a person (the package is never held back)", async () => {
     const root = makeRepo({
       origin: `https://github.com/Avunu/${pilot}`,
       files: {
@@ -801,8 +974,13 @@ describe.each(PILOTS)("init, then doctor, in a copy of %s's .github", (pilot) =>
     expect(done.code).toBe(0);
     writeFileSync(join(root, "docs-site/package-lock.json"), "{}\n");
     expect(at(root, "error")).toEqual([]);
-    for (const warning of at(root, "warning"))
-      expect(warning).toMatch(/cooldown that does not exclude/);
+    const found = at(root, "warning");
+    expect(found.filter((warning) => warning.includes("@avunu/docusystem"))).toEqual([]);
+    expect(found).toHaveLength(pilot === "erpnext_taskview" ? 1 : 0);
+    for (const warning of found)
+      expect(warning).toContain(
+        "the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
+      );
   });
 });
 
@@ -817,6 +995,8 @@ describe("the command", () => {
     expect(out).toContain("A maintainer still has to (none of it can be checked from a clone):");
     expect(out).toContain("Custom domain: frappe-nix.avunu.net");
     expect(out).toContain("DOCS_SITE_ENABLED = true");
+    expect(out).toContain("Verify avunu.net once for the Avunu GitHub organization");
+    expect(out).toContain("when the site is retired or its domain changes");
   });
 
   test("warnings do not fail it; errors do", async () => {

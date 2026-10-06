@@ -50,6 +50,18 @@ describe("the scaffold", () => {
     );
   });
 
+  test("lists the paths of each caller one entry per line, which no formatter re-wraps", () => {
+    // A one-line `paths: [...]` list is wider than 100 columns and is re-wrapped by oxfmt and prettier
+    // (see formatter.test.ts), so the adoption pull request fails the repository's own format check.
+    for (const file of ["docs.yml", "docs-publish.yml"] as const) {
+      const text = readScaffold(file);
+      expect(text, file).not.toMatch(/^\s*paths:\s*\[/m);
+      expect(text, file).toMatch(
+        /^ {4}paths:\n {6}- @@DOCS@@\/\*\*\n {6}- @@SITE@@\/\*\*\n {6}- \.github\/workflows\/docs\.yml\n {6}- \.github\/workflows\/docs-publish\.yml\n/m,
+      );
+    }
+  });
+
   test("leaves no token behind", () => {
     for (const file of ["docs.yml", "docs-publish.yml"] as const) {
       expect(renderScaffold(file, VALUES)).not.toMatch(/@@/);
@@ -79,7 +91,10 @@ describe("the scaffold", () => {
     const text = renderScaffold("docs-publish.yml", { ...VALUES, docs: "" });
     const workflow = parse(text) as { on: { push: { paths: string[] } } };
     expect(workflow.on.push.paths[0]).toBe("**");
-    expect(renderScaffold("docs.yml", { ...VALUES, docs: "." })).toContain('paths: ["**", ');
+    // a bare ** would be an alias: this one entry is quoted, the others are plain scalars
+    expect(renderScaffold("docs.yml", { ...VALUES, docs: "." })).toContain(
+      'paths:\n      - "**"\n      - docs-site/**\n',
+    );
   });
 
   test("refuses values that could not be put into a workflow safely", () => {
@@ -319,6 +334,54 @@ describe("maintainerSteps", () => {
     expect(text).toContain("DOCS_SITE_ENABLED = true");
     expect(text).toContain("Branch protection on the default branch");
     expect(text).toContain("docs: https://frappe-nix.avunu.net in the entry for frappe-nix");
+  });
+
+  test("the domain is verified for the organization before the custom domain and the DNS record", () => {
+    const steps = maintainerSteps({
+      domain: "frappe-nix.avunu.net",
+      slug: "frappe-nix",
+      repo: "https://github.com/Avunu/frappe-nix",
+    });
+    const verify = steps.findIndex((step) => step.startsWith("Verify avunu.net once"));
+    expect(verify).toBeGreaterThan(-1);
+    expect(steps[verify]).toContain("for the Avunu GitHub organization");
+    expect(steps[verify]).toContain("TXT record _github-pages-challenge-Avunu.avunu.net");
+    expect(steps[verify]).toContain("another GitHub account can claim frappe-nix.avunu.net");
+    expect(verify).toBeLessThan(steps.findIndex((step) => step.startsWith("Custom domain:")));
+    expect(verify).toBeLessThan(steps.findIndex((step) => step.startsWith("DNS:")));
+  });
+
+  test("the organization is the owner of the repository, or a placeholder when it is unknown", () => {
+    const named = maintainerSteps({
+      domain: "x.avunu.net",
+      slug: "x",
+      repo: "https://github.com/Another-Org/x",
+    }).join("\n");
+    expect(named).toContain("_github-pages-challenge-Another-Org.avunu.net");
+    const unknown = maintainerSteps({ domain: "x.avunu.net", slug: "x" }).join("\n");
+    expect(unknown).toContain("_github-pages-challenge-<ORG>.avunu.net");
+  });
+
+  test("GitHub protects immediate subdomains only: other names are verified themselves", () => {
+    const nested = maintainerSteps({ domain: "a.b.avunu.net", slug: "x" }).join("\n");
+    expect(nested).toContain("Verify a.b.avunu.net once");
+    expect(nested).toContain("_github-pages-challenge-<ORG>.a.b.avunu.net");
+    const outside = maintainerSteps({ domain: "docs.example.org", slug: "x" }).join("\n");
+    expect(outside).toContain("Verify docs.example.org once");
+  });
+
+  test("the last step removes the record when the site is retired", () => {
+    const steps = maintainerSteps({ domain: "frappe-nix.avunu.net", slug: "frappe-nix" });
+    const last = steps.at(-1) ?? "";
+    expect(last).toContain("when the site is retired or its domain changes");
+    expect(last).toContain("delete the CNAME of the old domain (now: frappe-nix)");
+    expect(last).toContain("no record is left pointing at avunu.github.io");
+  });
+
+  test("tell a repository with a formatter to run it over the new files, or to ignore docs-site", () => {
+    const text = maintainerSteps({ domain: "frappe-nix.avunu.net", slug: "frappe-nix" }).join("\n");
+    expect(text).toContain("If a formatter checks every file of the repository (oxfmt, prettier)");
+    expect(text).toContain('"ignorePatterns": ["docs-site"]');
   });
 
   test("a domain outside avunu.net is its own record, and a configured branch is named", () => {

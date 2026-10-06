@@ -9,8 +9,15 @@
 // The contract (version 1): { version, generated, site, projects: [{ slug, title, platform, summary,
 // repo, page, docs, license, status, suite }] }; platform is one of frappe, odoo, wordpress, nixos,
 // general; docs is null until a project has its own docs site; license and suite may be null.
+//
+// The catalog comes from outside the package (avunu.net, through `--refresh-catalog` and the weekly
+// catalog pull request), and the compiler evaluates a `${...}` in the text that a page renders: a title,
+// a slug or a link that held one would run code in the build of every site that bundles the catalog.
+// So the contract also bounds the text: a slug is a config slug, and no string anywhere in the document
+// holds `${`, `<`, `>` or a control character (see `unsafeStrings`).
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { SLUG } from "./config.js";
 import { packageRoot } from "./package-info.js";
 import { PLATFORMS } from "./platforms.js";
 import type { Catalog, CatalogProject } from "./types.js";
@@ -37,8 +44,65 @@ function isHttps(value: unknown): value is string {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** What no string of the catalog may hold: each is one way a string becomes code or markup. */
+const UNSAFE_TEXT: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\$\{/, 'a "${" (the compiler evaluates it as an expression)'],
+  [/[<>]/, 'a "<" or ">" (markup)'],
+  [/[\p{Cc}\u2028\u2029]/u, "a control character"],
+];
+
+/** Where a key of the document is, as `projects[1].title`; a key that is not a plain word is quoted. */
+const pathTo = (at: string, key: string): string => {
+  const word = /^[A-Za-z_][\w-]*$/.test(key);
+  if (at === "") return word ? key : `[${JSON.stringify(key)}]`;
+  return word ? `${at}.${key}` : `${at}[${JSON.stringify(key)}]`;
+};
+
+/** A real catalog is three levels deep (document, projects, project); nobody needs more than this. */
+const MAX_DEPTH = 8;
+
+/**
+ * One sentence for every string of `doc`, as a value or as a key and at any depth (an extra field
+ * included), that holds `${`, `<`, `>` or a control character. The sentence says where the string is and
+ * what is wrong with it, never what it says: the catalog is not trusted, and these sentences end up in
+ * a terminal and a log. Anything nested deeper than MAX_DEPTH is reported and not looked into.
+ */
+function unsafeStrings(doc: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+  const check = (text: string, where: string): void => {
+    for (const [pattern, reason] of UNSAFE_TEXT) {
+      if (pattern.test(text)) problems.push(`${where} holds ${reason}`);
+    }
+  };
+  const walk = (value: unknown, at: string, depth: number): void => {
+    if (typeof value === "string") {
+      check(value, at);
+    } else if (typeof value === "object" && value !== null) {
+      if (depth > MAX_DEPTH) {
+        problems.push(`${at} is nested more than ${MAX_DEPTH} levels deep`);
+      } else if (Array.isArray(value)) {
+        value.forEach((item, index) => walk(item, `${at}[${index}]`, depth + 1));
+      } else {
+        for (const [key, child] of Object.entries(value)) {
+          check(key, `a field name in ${at === "" ? "the document" : at}`);
+          walk(child, pathTo(at, key), depth + 1);
+        }
+      }
+    }
+  };
+  walk(doc, "", 0);
+  return problems;
+}
+
 /** Every way `doc` differs from the version 1 contract, as sentences; empty means it conforms. */
 export function validateCatalog(doc: unknown): string[] {
+  const problems = checkContract(doc);
+  if (isObject(doc)) problems.push(...unsafeStrings(doc));
+  return problems;
+}
+
+/** The shape of the contract: types, enumerations and addresses (the text of the fields is `unsafeStrings`). */
+function checkContract(doc: unknown): string[] {
   if (!isObject(doc)) return ["the document is not a JSON object"];
   const problems: string[] = [];
   if (doc.version !== 1) problems.push(`"version" must be 1 (got ${JSON.stringify(doc.version)})`);
@@ -55,15 +119,22 @@ export function validateCatalog(doc: unknown): string[] {
       problems.push(`${at} is not an object`);
       return;
     }
-    const name = typeof entry.slug === "string" && entry.slug !== "" ? entry.slug : at;
+    // A slug names the entry in the messages only when it is a clean one: a hostile slug is not echoed.
+    const slug = entry.slug;
+    const name = typeof slug === "string" && SLUG.test(slug) ? slug : at;
     for (const key of ["slug", "title", "summary"] as const) {
       if (typeof entry[key] !== "string" || entry[key] === "") {
         problems.push(`${name}: "${key}" must be a non-empty string`);
       }
     }
-    if (typeof entry.slug === "string") {
-      if (seen.has(entry.slug)) problems.push(`${name}: duplicate slug`);
-      seen.add(entry.slug);
+    if (typeof slug === "string") {
+      if (slug !== "" && !SLUG.test(slug)) {
+        problems.push(
+          `${name}: "slug" must be lowercase letters, digits, hyphens and underscores, starting with a letter or digit`,
+        );
+      }
+      if (seen.has(slug)) problems.push(`${name}: duplicate slug`);
+      seen.add(slug);
     }
     if (
       typeof entry.platform !== "string" ||

@@ -25,7 +25,8 @@ vi.mock("../../src/lib/config.js", async (importOriginal) => {
 });
 vi.mock("../../src/lib/lint.js", () => ({
   lintDocs: fakes.lintDocs,
-  formatIssue: (issue: LintIssue) => `docs/${issue.file}:${issue.line}  ${issue.message}`,
+  formatIssue: (issue: LintIssue, o?: { prefix?: string }) =>
+    `${o?.prefix ?? "docs"}/${issue.file}:${issue.line}  ${issue.message}`,
 }));
 vi.mock("../../src/lib/links.js", () => ({
   checkLinks: fakes.checkLinks,
@@ -69,6 +70,19 @@ describe("docusystem lint", () => {
       "error: docs/README.md:14  Reference-style links are not rendered.",
       "warning: docs/guide/x.md:8  Task-list checkboxes are shown as plain list items.",
       "lint: 1 error(s), 1 warning(s)",
+    ]);
+  });
+
+  test("names the Markdown folder the way the repository shows it when it is not docs/", async () => {
+    // "docs": "../documentation" in the config
+    fakes.pathsFor.mockReturnValue({ ...world.paths, docsDir: join(world.dir, "documentation") });
+    mkdirSync(join(world.dir, "documentation"), { recursive: true });
+    fakes.lintDocs.mockReturnValue([issue({ file: "guide/x.md", line: 9, message: "m" })]);
+    const { code, stdout } = await runCli(["lint"], { cwd: world.dir });
+    expect(code).toBe(1);
+    expect(stdout.split("\n")).toEqual([
+      "error: documentation/guide/x.md:9  m",
+      "lint: 1 error(s), 0 warning(s)",
     ]);
   });
 

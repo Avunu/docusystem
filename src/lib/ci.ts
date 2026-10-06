@@ -8,6 +8,7 @@
 // property), so that a message with a newline or a percent sign arrives whole.
 import { appendFileSync } from "node:fs";
 import { jxVersions } from "./jx.js";
+import { JX_FRAGMENT } from "./overrides.js";
 import { version } from "./package-info.js";
 import type { Manifest, Problem } from "./types.js";
 
@@ -78,7 +79,7 @@ export interface SummaryInput {
   /** The `info` essentials, so that a red run can be read without a checkout. */
   versions: { docusystem: string; runtime: string; jx: Record<string, string> };
   catalog?: string;
-  overrides?: { shadowed: string[]; added: string[] };
+  overrides?: { shadowed: string[]; added: string[]; jx?: boolean };
   problems: Problem[];
 }
 
@@ -126,15 +127,13 @@ export function renderSummary(input: SummaryInput): string {
   if (jx.length > 0) out.push(`- ${jx.join(", ")}`);
   if (input.catalog !== undefined) out.push(`- project catalog: ${input.catalog}`);
   const overrides = input.overrides;
-  if (overrides !== undefined && overrides.shadowed.length + overrides.added.length > 0) {
-    out.push(
-      `- overrides: ${[
-        ...overrides.shadowed.map((file) => `${file} (replaces the package's file)`),
-        ...overrides.added.map((file) => `${file} (added)`),
-      ].join(", ")}`,
-    );
-  } else if (overrides !== undefined) {
-    out.push("- overrides: none");
+  if (overrides !== undefined) {
+    const listed = [
+      ...overrides.shadowed.map((file) => `${file} (replaces the package's file)`),
+      ...overrides.added.map((file) => `${file} (added)`),
+      ...(overrides.jx === true ? [JX_FRAGMENT] : []),
+    ];
+    out.push(`- overrides: ${listed.length === 0 ? "none" : listed.join(", ")}`);
   }
   out.push("");
   return out.join("\n");

@@ -38,11 +38,12 @@ These hold for the whole package. A change that needs to break one is a design d
 4. **Everything is recorded.** Each build writes `.docusystem/manifest.json` and `.docusystem/jx.log` and prints the command to run Jx by hand.
 5. **Real bytes only.** Published files are copies, never symbolic links.
 6. **No scripts, no surprises at install or build.** No `postinstall` or `prepare` script runs for consumers; no network access during `build` except with `--refresh-catalog`; the Jx packages are pinned exactly; no new runtime dependency beyond `@jxsuite/compiler`, `@jxsuite/parser`, `@jxsuite/runtime`, `@jxsuite/search` and `yaml`.
-7. **Least privilege.** The build job has `contents: read` and no secrets, the deploy job runs no project code, and no workflow that a pull request can trigger asks for `pages: write` or `id-token: write`.
+7. **Least privilege.** The build job has `contents: read` and no secrets, the deploy job runs no project code, and no workflow that a pull request can trigger asks for `pages: write` or `id-token: write`. A job that holds `id-token: write` runs none of this repository's code: the release builds its tarball in a job without the token and publishes that file in the one with it.
 8. **The package picks Jx.** Shells never name a Jx package.
 9. **Overrides are visible and cost something.** Every override and every `jx` fragment is printed on build, recorded in the manifest and reported by `doctor` when it can drift.
 10. **Trust assertions, not Jx.** Jx ignores what it does not understand and still exits 0, so the output is asserted positively.
 11. **Both runtimes first-class for local use.** `build`, `check` and `dev` run on Node and on Bun. CI and deploys use Node 24 only.
+12. **A page is data.** Nothing a page of Markdown says reaches Jx as a template (staging writes every `${` inert), and no published page carries a script: the lint and the output assertions refuse code, and every page carries a Content-Security-Policy.
 
 Source conventions: TypeScript with ES modules, `.js` specifiers for relative imports, module `nodenext`, declarations on and no source maps. `src/` uses Node APIs only, never Bun APIs. Compiled JavaScript is what ships, because Node refuses TypeScript inside `node_modules`.
 

@@ -2,8 +2,11 @@
 // consumer matrix, the workflow lint pins, and the dispatch trigger the release and catalog pull
 // requests depend on.
 import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { hasJq, runOf, workflow } from "./helpers.js";
+import { REPO_ROOT, tempDir } from "../support/index.js";
+import { hasBash, hasJq, runOf, workflow } from "./helpers.js";
 
 const ci = workflow("ci.yml");
 const jobs = ci.doc.jobs;
@@ -224,6 +227,7 @@ describe("the other jobs", () => {
       "npm ci --ignore-scripts --no-audit --no-fund",
       "npm run check",
       "npm run build",
+      expect.stringContaining("npm test"),
     ]);
     expect(runs("pack")).toEqual([
       "npm ci --ignore-scripts --no-audit --no-fund",
@@ -232,6 +236,58 @@ describe("the other jobs", () => {
       "npm run check:publint",
       "npm run check:types",
     ]);
+  });
+
+  test("the tests run again at another version, after the check, so a test that pins the version fails on the pull request and not at the release", () => {
+    // release.yml runs `npm run check` on the release commit, after release-please has moved the version
+    // and created the tag: a failure there leaves a tag and a GitHub Release with nothing on npm.
+    const names = (jobs.check?.steps ?? []).map((step) => step.name);
+    expect(names.indexOf("Tests at another version")).toBeGreaterThan(names.indexOf("Check"));
+    const lines = runOf(ci, "check", "Tests at another version")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    expect(lines.at(-1)).toBe("npm test");
+    const bump = /^npm version (\d+\.\d+\.\d+) --no-git-tag-version --ignore-scripts$/.exec(
+      lines[0] ?? "",
+    );
+    expect(bump, "the first line moves package.json and the lockfile").not.toBeNull();
+    const next = bump?.[1] ?? "";
+
+    // Run everything but the final `npm test` on copies of the three files release-please changes, as
+    // they stand at a version that is not `next` (not the repository's own: this test runs at `next`
+    // too), and compare with what a release pull request does to them (verified on the release branch
+    // of v0.1.0: the version in all three, the manifest as `{ ".": "X.Y.Z" }`).
+    if (!hasBash) return;
+    const seed = "0.0.1";
+    expect(next).not.toBe(seed);
+    const dir = tempDir();
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8"));
+    const lock = JSON.parse(readFileSync(join(REPO_ROOT, "package-lock.json"), "utf8"));
+    pkg.version = lock.version = lock.packages[""].version = seed;
+    writeFileSync(join(dir, "package.json"), JSON.stringify(pkg, null, 2));
+    writeFileSync(join(dir, "package-lock.json"), JSON.stringify(lock, null, 2));
+    writeFileSync(join(dir, ".release-please-manifest.json"), `{\n  ".": "${seed}"\n}\n`);
+    const run = spawnSync(
+      "bash",
+      ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", lines.slice(0, -1).join("\n")],
+      {
+        cwd: dir,
+        env: {
+          PATH: process.env.PATH ?? "",
+          HOME: process.env.HOME ?? dir,
+          npm_config_update_notifier: "false",
+        },
+        encoding: "utf8",
+      },
+    );
+    expect(run.status, run.stderr).toBe(0);
+    const json = (file: string) => JSON.parse(readFileSync(join(dir, file), "utf8"));
+    expect(json("package.json").version).toBe(next);
+    expect(json("package-lock.json").version).toBe(next);
+    expect(json("package-lock.json").packages[""].version).toBe(next);
+    expect(readFileSync(join(dir, ".release-please-manifest.json"), "utf8")).toBe(
+      `{\n  ".": "${next}"\n}\n`,
+    );
   });
 
   test("verify builds the example from the tarball, runs the browser suites in Chrome and keeps the screenshots", () => {

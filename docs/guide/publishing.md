@@ -23,7 +23,11 @@ name: Docs
 # Nothing here can publish: the token is read-only. Publishing is docs-publish.yml.
 on:
   pull_request:
-    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml", ".github/workflows/docs-publish.yml"]
+    paths:
+      - docs/**
+      - docs-site/**
+      - .github/workflows/docs.yml
+      - .github/workflows/docs-publish.yml
 
 permissions: {}
 
@@ -51,7 +55,11 @@ name: Docs publish
 # Runs on push and by hand, never on a pull request, so it never sees a pull request's token.
 on:
   push:
-    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml", ".github/workflows/docs-publish.yml"]
+    paths:
+      - docs/**
+      - docs-site/**
+      - .github/workflows/docs.yml
+      - .github/workflows/docs-publish.yml
   workflow_dispatch:
 
 permissions: {}
@@ -79,6 +87,7 @@ The `paths` globs and `site-directory` follow the config: the docs folder relati
 - **Neither names a branch.** The shared workflows read the repository's default branch themselves, so a repository whose default branch is `develop` or `18.0` needs nothing, and a rename of the default branch needs no edit.
 - **The build runs on every pull request, even before Pages is enabled.** Only the deploy job waits for `DOCS_SITE_ENABLED`.
 - **A push to another branch** that touches these paths starts a run whose jobs are skipped.
+- **The `paths` lists have one entry per line.** A one-line list is re-wrapped by oxfmt and prettier at their print width, which would fail the repository's own format check on the pull request that adds the workflows. If you edit a list, keep it a block list.
 - **A commit, never a tag.** Callers pin a commit with a `# vX.Y.Z` comment. There is no moving major tag. `docusystem upgrade` re-pins both files, and Dependabot's `github-actions` entry moves the pin.
 
 ## What a maintainer sets, once
@@ -86,9 +95,10 @@ The `paths` globs and `site-directory` follow the config: the docs folder relati
 None of this can be done by a pull request. `docusystem init` prints it with your values, and `docusystem doctor` prints it again from the config.
 
 1. **Pages source.** Repository settings, Pages, Build and deployment, Source: **GitHub Actions**.
-2. **Custom domain.** The same page, Custom domain: the `domain` of `docusystem.config.json`. It is the repository name with hyphens, never the slug's underscores. Tick **Enforce HTTPS** once GitHub has issued the certificate.
-3. **DNS.** Add `CNAME <label> -> avunu.github.io`, where `<label>` is the domain's first label. Keep it DNS only (no proxy) until the certificate exists.
-4. **Enable the site.** Set the repository variable `DOCS_SITE_ENABLED` to `true` (Settings, Secrets and variables, Actions, Variables), or:
+2. **Verify the domain, once for the organization.** Organization settings, Pages, Add a domain: `avunu.net`, and add the TXT record `_github-pages-challenge-Avunu.avunu.net` that GitHub shows. This is a security measure, not a convenience: it covers every immediate subdomain, so no other GitHub account can claim `<label>.avunu.net` (see [When a site is retired](#when-a-site-is-retired)). Do it before the first DNS record below; it is not repeated per repository.
+3. **Custom domain.** Repository settings, Pages, Custom domain: the `domain` of `docusystem.config.json`. It is the repository name with hyphens, never the slug's underscores. Tick **Enforce HTTPS** once GitHub has issued the certificate.
+4. **DNS.** Add `CNAME <label> -> avunu.github.io`, where `<label>` is the domain's first label. Keep it DNS only (no proxy) until the certificate exists.
+5. **Enable the site.** Set the repository variable `DOCS_SITE_ENABLED` to `true` (Settings, Secrets and variables, Actions, Variables), or:
 
    ```bash
    gh variable set DOCS_SITE_ENABLED --body true --repo <OWNER>/<REPO>
@@ -96,10 +106,21 @@ None of this can be done by a pull request. `docusystem init` prints it with you
 
    Until it is set, `docs-publish.yml` only builds and checks.
 
-5. **Protect the default branch.** Every push to it publishes. Require a pull request and the repository's own CI check, so that nothing reaches the site without a review.
-6. **List the site in the catalog.** In avunu.net's catalog entry for the project, set `docs: https://<domain>`. The project switcher of every docs site then links to it.
+   Set it after avunu.net has relaunched. The Projects menu lists the projects of avunu.net's catalog and links each one to its docs site or, when it has none, to its page `https://avunu.net/open-source/<slug>/`. Until avunu.net serves `https://avunu.net/projects.json` and those pages, the browser's fetch of the live catalog fails quietly, the menu keeps the list bundled in the package, and its links to avunu.net pages answer 404. Nothing else is affected, and nothing needs rebuilding afterwards: the links start to work when avunu.net publishes the pages. Enabling the site earlier means accepting a dead menu; [Launch order for the Projects menu](../../MAINTAINING.md#launch-order-for-the-projects-menu) says when that is reasonable.
 
-Optionally, verify `avunu.net` for the GitHub organization (Settings, Pages) so that no other account can claim a subdomain.
+6. **Protect the default branch.** Every push to it publishes. Require a pull request and the repository's own CI check, so that nothing reaches the site without a review.
+7. **List the site in the catalog.** In avunu.net's catalog entry for the project, set `docs: https://<domain>`. The project switcher of every docs site then links to it.
+
+## When a site is retired
+
+The CNAME of step 4 keeps pointing `<label>.avunu.net` at GitHub for as long as it exists, whatever the repository does. If the repository's Pages site is unpublished, or the repository is renamed (the domain is derived from the name), archived or deleted, while the record remains, the name is dangling: with no verified domain, another GitHub account can add `<label>.avunu.net` as the custom domain of its own Pages site and serve its own content on a subdomain of `avunu.net`. The verification of step 2 prevents that, and the order below removes the cause:
+
+1. Delete the `CNAME <label> -> avunu.github.io` record first, or in the same change.
+2. Remove the custom domain in the repository's Pages settings, or unpublish Pages, and delete the `DOCS_SITE_ENABLED` variable.
+3. Remove the `docs:` line from the project's avunu.net catalog entry, so that the project switcher stops linking to a site that is gone.
+4. Only then rename, archive or delete the repository.
+
+When a rename changes the domain, treat the old name as retired and the new one as a new site: it needs its own record, and the old record needs deleting.
 
 ## Dependabot
 
@@ -124,18 +145,24 @@ updates:
       prefix: chore
 ```
 
-A new release of the package arrives as one grouped npm pull request, and a new commit pin as one `github-actions` pull request. The cooldown delays updates of third-party packages; `@avunu/docusystem` and `Avunu/docusystem` are excluded from it so that their releases arrive at once. If an existing `github-actions` entry has a cooldown that does not exclude `Avunu/docusystem`, `docusystem doctor` warns.
+A new release of the package arrives as one grouped npm pull request, and a new commit pin as one `github-actions` pull request. The cooldown delays updates of third-party packages; `@avunu/docusystem` and `Avunu/docusystem` are excluded from it so that their releases arrive at once. That holds for the entries `init` writes. For the entries a repository had already, `init` does this:
+
+- An existing `bun` entry for the site folder (the first sites to adopt the system had one) is converted to `npm` in place, because the lockfile is `package-lock.json`. If it has a cooldown, `init` adds `@avunu/docusystem` to its `cooldown.exclude`, and it changes "Bun" to "npm" in the comment blocks about the site folder. A cooldown it cannot extend in place (a flow mapping, `exclude: [...]`) is left as it is and reported.
+- An existing `npm` entry for the site folder, and an existing `github-actions` entry, are never edited. If their cooldown does not exclude `@avunu/docusystem` or `Avunu/docusystem`, a release would wait out the cooldown (seven days in the examples) before Dependabot proposes it. `init` and `upgrade` print the lines to add under "Not done, for you to do by hand", and `docusystem doctor` warns for both entries.
 
 Both pull requests run `docs.yml` and upload the built site as a review artifact. **A person merges them**, because a merge to the default branch publishes the site. For that reason `init` patches an existing `dependabot-auto-merge.yml` to leave the site's pull requests out:
 
 <!-- prettier-ignore -->
 ```yaml
-    # The documentation site's package updates (docs-site/) are reviewed by a person: a merge to the
-    # default branch publishes the site.
-    if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}
+    # Updates of the documentation site's packages (docs-site/) and of the commit pin of its shared
+    # workflows (github-actions pull requests) are reviewed by a person: a merge to the default branch
+    # publishes the site.
+    if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}
 ```
 
-The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one; any other shape is left alone, printed with the line to add. `doctor` reports an auto-merge workflow that lacks the exclusion.
+The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. The condition may as well test the pull request's author (`github.event.pull_request.user.login == 'dependabot[bot]'`, the form that zizmor recommends) or be a folded `if: >-` block, which gets the exclusion as a new first line; a condition with an `||` is put in parentheses first. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one, and the comment that gave the starter's reason (a workflow gated by a repository variable) now says that the Docs check is path-filtered and cannot be a required check. A workflow that already skips the site's branches gets the second clause right after the first. A shape that `init` cannot rewrite (a quoted condition, several jobs that test for Dependabot, a file that is not valid YAML) is left alone, and `init` prints the condition it found and the finished line to paste. `doctor` reports an auto-merge workflow that lacks either exclusion, and says `docusystem init` does it only when it does.
+
+The second clause is there because the pull request that moves the commit pin is a `github-actions` one, and a merge publishes the site with the new workflow code. It skips every `github-actions` pull request of the repository, not only that one: a grouped pull request is on a branch named after the group (`dependabot/github_actions/<group>-<hash>`), so the branch does not say which dependencies are in it. A workflow that reads `dependabot/fetch-metadata` can skip on `!contains(steps.metadata.outputs.dependency-names, 'Avunu/docusystem')` instead, which `doctor` accepts as well.
 
 > [!NOTE]
 > The `docs.yml` path filter means its check is not reported on pull requests that touch no docs path, so it cannot be a required status check as it stands. Whether to make it always report, so that the exclusion can go, is an open decision of the maintainers; see [MAINTAINING.md](../../MAINTAINING.md).
@@ -144,6 +171,6 @@ The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-l
 
 The build job installs the site's locked dependencies without running their scripts, verifies the registry signatures and the provenance of `@avunu/docusystem`, then runs the installed CLI: `docusystem check --ci`. A pull request's job has a read-only token and no secrets. The deploy job runs no project code: it hands the Pages artifact that the build job made in the same run to GitHub Pages.
 
-A pull request can change `docs/` and `docs-site/` (the config, the lockfile and any override) and therefore run code in the build job. It cannot change the shared workflows, which are pinned by commit, and it cannot reach the deploy job, which lives in a file that no pull request triggers. The [workflow reference](../reference/workflows.md#trust-model) states the model in full.
+A pull request can change `docs/` and `docs-site/` (the config, the lockfile and any override). A change to `docs-site/` can run code in the build job; a change to `docs/` alone cannot, because a page is data, and the pages are checked for scripts before they are published. It cannot change the shared workflows, which are pinned by commit, and it cannot reach the deploy job, which lives in a file that no pull request triggers. The [workflow reference](../reference/workflows.md#trust-model) states the model in full.
 
 When a build fails, the job uploads `.docusystem/manifest.json`, `.docusystem/jx.log` and the assembled project as the artifact `docusystem-debug`, so that a red run can be read without a checkout.

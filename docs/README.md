@@ -26,12 +26,12 @@ your-repo/
     dependabot.yml                   keeps the package and the workflow pin current
 ```
 
-The list is closed. A project that needs more has an [override](guide/overrides.md), not another file. The shell must not contain components, layouts, pages, fonts, scripts, tests, a `project.json`, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
+The list is closed. A project that needs more has an [override](guide/overrides.md), not another file. The shell must not contain components, layouts, pages, fonts, scripts, tests, a `project.json`, a `data/` folder, a `docs.config.json`, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
 
 ## What a project gets
 
 - **A site that follows the package.** A new release arrives as one Dependabot pull request; nothing is copied between repositories.
-- **Checks that fail the build.** In CI a broken link, a missing image, Markdown the site cannot show, a missing component or an empty link stops the build. See [Writing documentation](guide/writing-docs.md).
+- **Checks that fail the build.** In CI a broken link, a missing image, Markdown the site cannot show, a missing component, an empty link, or a script, event handler or `javascript:` address in the Markdown stops the build, and every page carries a Content-Security-Policy. See [Writing documentation](guide/writing-docs.md).
 - **A site that is the same everywhere.** The project switcher lists the other Avunu projects, grouped by platform, and works offline from a catalog bundled in the package.
 - **Customization with a visible cost.** Design tokens can be overridden in the config file and checked for contrast; any file can be replaced, and every replacement is printed on every build. See [Customizing](guide/overrides.md).
 - **Nothing to run at install.** No install script runs, no network is used during a build (unless you ask for a fresh catalog), and the Jx packages are pinned exactly inside the package.
@@ -41,7 +41,7 @@ The list is closed. A project that needs more has an [override](guide/overrides.
 `docusystem build` assembles a plain [Jx](https://jxsuite.com) project in `docs-site/.docusystem/site/` from real copies: the package's own `site/` folder, your overrides, a generated `project.json`, the resolved config, the catalog and your staged Markdown. It runs the pinned Jx compiler on that folder, post-processes the result, asserts what Jx would silently get wrong, and publishes it to `docs-site/dist`. Jx is an implementation detail: no project names a Jx package. The steps are listed in [Build pipeline](reference/build-pipeline.md).
 
 > [!NOTE]
-> Before this package, Avunu's first documentation sites copied a template folder into each repository. Where these pages mention "the earlier starter" they mean that template. `docusystem init` and `docusystem doctor` recognize what it leaves behind.
+> Before this package, Avunu's first documentation sites copied a template folder into each repository. Where these pages mention "the earlier starter" they mean that template. `docusystem init` and `docusystem doctor` recognize what it leaves behind, and [Migrating from the earlier starter](guide/migrating-from-the-starter.md) moves a repository to the package.
 
 ## Requirements
 

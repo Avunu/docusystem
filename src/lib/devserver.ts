@@ -13,8 +13,8 @@
 //     build, so a request never sees a half-written site, and a failed build keeps the last good one.
 //   - Binds to 127.0.0.1 only, and answers only requests whose Host is loopback (a web page on another
 //     origin cannot reach it through DNS rebinding).
-//   - `/__reload` is a server-sent-events stream; every HTML page gets a script that listens to it and
-//     reloads, injected before `</body>` as the page is sent.
+//   - `/__reload` is a server-sent-events stream; every HTML page gets a script (`/__reload.js`) that
+//     listens to it and reloads, injected before `</body>` as the page is sent.
 //   - `fs.watch` on the Markdown folder, `overrides/`, `public/` and the site folder (for the
 //     configuration, and for `overrides/` and `public/` appearing); changes are debounced; one rebuild
 //     runs at a time, and a change that arrives during a build causes exactly one more.
@@ -51,7 +51,13 @@ const TYPES: Record<string, string> = {
 };
 
 export const RELOAD_PATH = "/__reload";
-const RELOAD_SNIPPET = `<script>(()=>{const e=new EventSource("${RELOAD_PATH}");e.addEventListener("reload",()=>location.reload());})()</script>`;
+/**
+ * The reload script is a file the server answers, not an inline script: the pages carry a
+ * Content-Security-Policy that refuses inline scripts the build did not write (csp.ts).
+ */
+export const RELOAD_SCRIPT_PATH = "/__reload.js";
+const RELOAD_SCRIPT = `(()=>{const e=new EventSource("${RELOAD_PATH}");e.addEventListener("reload",()=>location.reload());})()`;
+const RELOAD_SNIPPET = `<script src="${RELOAD_SCRIPT_PATH}"></script>`;
 
 /** A Host header that is this machine: `127.0.0.1`, `localhost` or `[::1]`, with or without a port. */
 const LOOPBACK_HOST = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i;
@@ -174,6 +180,11 @@ export function startServer(o: { root: string; port: number }): Promise<StaticSe
       res.write("retry: 500\n\n");
       clients.add(res);
       req.on("close", () => clients.delete(res));
+      return;
+    }
+
+    if (pathname === RELOAD_SCRIPT_PATH) {
+      send(req, res, 200, "text/javascript; charset=utf-8", RELOAD_SCRIPT);
       return;
     }
 

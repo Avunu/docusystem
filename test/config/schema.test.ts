@@ -12,6 +12,7 @@ import {
   DOMAIN,
   LICENSE_MAX,
   NAME_MAX,
+  NO_EXPRESSION,
   OPTIONAL_KEYS,
   REPO,
   REQUIRED_KEYS,
@@ -91,6 +92,10 @@ describe("the schema and the validator say the same thing", () => {
     same(schema.properties.branch.pattern, BRANCH);
     same(schema.$defs.tokens.propertyNames.pattern, TOKEN_NAME);
     same(schema.$defs.tokens.additionalProperties.pattern, TOKEN_VALUE);
+    // the text keys refuse a `${`, which Jx would run as JavaScript
+    for (const key of ["name", "tagline", "license", "docs"]) {
+      same(schema.properties[key].pattern, NO_EXPRESSION);
+    }
   });
 
   test("the limits are the code's", () => {
@@ -166,6 +171,11 @@ describe("the schema and the validator say the same thing", () => {
     ["a branch that starts with a hyphen", { ...base, branch: "-x" }, false],
     ["a branch of 101 characters", { ...base, branch: "b".repeat(101) }, false],
     ["an empty docs", { ...base, docs: "" }, false],
+    ["a name with an expression", { ...base, name: "A ${process.cwd()}" }, false],
+    ["a tagline with an expression", { ...base, tagline: "A ${1}" }, false],
+    ["a license with an expression", { ...base, license: "MIT${1}" }, false],
+    ["a docs with an expression", { ...base, docs: "../d${1}" }, false],
+    ["a name with a lone dollar and a lone brace", { ...base, name: "$5 {x}" }, true],
     ["a docs that is a number", { ...base, docs: 3 }, false],
     ["an unknown images value", { ...base, images: "yes" }, false],
     ["jx as a list", { ...base, jx: [] }, false],

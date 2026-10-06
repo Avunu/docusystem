@@ -96,6 +96,30 @@ describe("syncCatalog: every other answer leaves the old catalog alone and says 
       "invalid",
       /frappe-nix: "platform" must be one of/,
     ],
+    [
+      "a title that is a template expression",
+      json(catalog([entry({ title: "T${process.cwd()}T" })])),
+      "invalid",
+      /projects\[0\]\.title holds a "\$\{"/,
+    ],
+    [
+      "a slug that is not a slug of the config",
+      json(catalog([entry({ slug: 'a"b' })])),
+      "invalid",
+      /projects\[0\]: "slug" must be lowercase letters, digits, hyphens and underscores/,
+    ],
+    [
+      "markup in a summary",
+      json(catalog([entry({ summary: "<img src=x>" })])),
+      "invalid",
+      /projects\[0\]\.summary holds a "<" or ">"/,
+    ],
+    [
+      "a control character in an address",
+      json(catalog([entry({ page: "https://avunu.net/a\u001bb" })])),
+      "invalid",
+      /projects\[0\]\.page holds a control character/,
+    ],
   ];
 
   test.each(cases)("%s", async (_label, handler, outcome, message) => {

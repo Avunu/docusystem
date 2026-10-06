@@ -8,16 +8,18 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "
 import { join, relative, resolve, sep } from "node:path";
 import { isInside } from "../lib/fsutil.js";
 import {
+  cooldownAdvice,
   DependabotShapeError,
   dependabotFile,
   ensureDependabotEntries,
 } from "../lib/dependabot.js";
 import { entryFor, readBundledCatalog } from "../lib/catalog.js";
-import { CONFIG_FILE, validateConfig } from "../lib/config.js";
-import { checkSlug } from "../lib/preflight.js";
+import { CONFIG_FILE, PLACEHOLDER_TAGLINE, validateConfig } from "../lib/config.js";
+import { checkSlug, entryName, LEGACY_CONFIG_FILE, starterLeftovers } from "../lib/preflight.js";
 import { gitRootOf, normalizeRemote, originRemote, repoName, runGit } from "../lib/gitremote.js";
 import { isAutoMergeWorkflow, patchAutoMerge } from "../lib/automerge.js";
-import { name as PACKAGE, version } from "../lib/package-info.js";
+import { name as PACKAGE, REPOSITORY, version } from "../lib/package-info.js";
+import { detectJsonIndent, indentOf, type Indent } from "../lib/indent.js";
 import { COMMIT, repinWorkflow, resolvePin, type PinResult } from "../lib/pin.js";
 import { PLATFORMS } from "../lib/platforms.js";
 import type { CatalogProject, DocsConfig } from "../lib/types.js";
@@ -70,26 +72,61 @@ const KNOWN_KEYS = new Set<string>([
 ]);
 const SCHEMA = "./node_modules/@avunu/docusystem/config.schema.json";
 
-/** The values of an existing configuration, and the keys init does not know. Null: there is none. */
-export function readExistingConfig(
-  siteDir: string,
-): { values: Record<string, unknown>; unknownKeys: string[] } | null {
-  const file = join(siteDir, CONFIG_FILE);
-  if (!existsSync(file)) return null;
+/** What the starter's template wrote into `docs.config.json` before anybody filled it in. */
+const STARTER_PLACEHOLDERS: Record<string, string> = {
+  name: "Project Name",
+  tagline: PLACEHOLDER_TAGLINE,
+  slug: "project-name",
+  repo: "https://github.com/Avunu/project-name",
+  domain: "project-name.avunu.net",
+};
+
+/** Where a repository that copied the starter is told how to move to the package. */
+const MIGRATION_GUIDE = `https://github.com/${REPOSITORY}/blob/main/docs/guide/migrating-from-the-starter.md`;
+
+/**
+ * The values of an existing configuration, and the keys init does not know. Null: there is none. A
+ * site folder that has no `docusystem.config.json` but has the earlier starter's `docs.config.json`
+ * (the same keys) is read from that file, so that the name, the tagline and above all the domain of a
+ * site that is already published survive the move; `legacy` says so. The template's own placeholder
+ * values are not values and are left out.
+ */
+export function readExistingConfig(siteDir: string): {
+  values: Record<string, unknown>;
+  unknownKeys: string[];
+  legacy: boolean;
+} | null {
+  let label: string = CONFIG_FILE;
+  let legacy = false;
+  if (!existsSync(join(siteDir, CONFIG_FILE))) {
+    if (!existsSync(join(siteDir, LEGACY_CONFIG_FILE))) return null;
+    label = LEGACY_CONFIG_FILE;
+    legacy = true;
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(file, "utf8"));
+    parsed = JSON.parse(readFileSync(join(siteDir, label), "utf8"));
   } catch (error) {
     throw new Error(
-      `${CONFIG_FILE} is not valid JSON (${(error as Error).message}): fix it, or delete it and run init again`,
+      `${label} is not valid JSON (${(error as Error).message}): fix it, or delete it and run init again`,
       { cause: error },
     );
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`${CONFIG_FILE} is not a JSON object: fix it, or delete it and run init again`);
+    throw new Error(`${label} is not a JSON object: fix it, or delete it and run init again`);
   }
-  const values = parsed as Record<string, unknown>;
-  return { values, unknownKeys: Object.keys(values).filter((key) => !KNOWN_KEYS.has(key)) };
+  const values = { ...(parsed as Record<string, unknown>) };
+  if (legacy) {
+    for (const [key, placeholder] of Object.entries(STARTER_PLACEHOLDERS)) {
+      if (values[key] === placeholder) delete values[key];
+    }
+    delete values.$schema;
+  }
+  return {
+    values,
+    unknownKeys: Object.keys(values).filter((key) => !KNOWN_KEYS.has(key)),
+    legacy,
+  };
 }
 
 const textOf = (value: unknown): string | undefined =>
@@ -291,17 +328,18 @@ const dependencyRange = (): string => {
 
 const lf = (text: string): string => text.replace(/\r\n/g, "\n");
 
-/** The configuration file's text: `$schema` first, then the keys in the order of the schema. */
-function configText(config: DocsConfig, schema: string): string {
+/**
+ * The configuration file's text: `$schema` first, then the keys in the order of the schema, indented
+ * the way the repository's formatter wants JSON (see ../lib/indent.ts).
+ */
+function configText(config: DocsConfig, schema: string, indent: Indent): string {
   const ordered: Record<string, unknown> = { $schema: schema };
   for (const key of [...IDENTITY, "branch", "docs", "theme", "images", "jx"] as const) {
     const value = (config as unknown as Record<string, unknown>)[key];
     if (value !== undefined) ordered[key] = value;
   }
-  return `${JSON.stringify(ordered, null, 2)}\n`;
+  return `${JSON.stringify(ordered, null, indent)}\n`;
 }
-
-const indentOf = (text: string): string | number => /^([ \t]+)\S/m.exec(text)?.[1] ?? 2;
 
 interface PackagePlan {
   after?: string;
@@ -315,6 +353,7 @@ function planPackage(
   before: string | null,
   slug: string,
   force: boolean,
+  fallbackIndent: Indent,
 ): PackagePlan {
   const notes: string[] = [];
   const fresh = {
@@ -324,7 +363,7 @@ function planPackage(
     scripts: { ...SCRIPTS },
     dependencies: { [PACKAGE]: dependencyRange() },
   };
-  if (before === null) return { after: `${JSON.stringify(fresh, null, 2)}\n`, notes };
+  if (before === null) return { after: `${JSON.stringify(fresh, null, fallbackIndent)}\n`, notes };
 
   let pkg: Record<string, unknown>;
   try {
@@ -351,17 +390,18 @@ function planPackage(
     ...(scripts.postinstall === undefined ? [] : ["a postinstall script"]),
     ...(jxDeps.length === 0 ? [] : [`a dependency on ${jxDeps.join(", ")}`]),
   ];
-  const indent = indentOf(before);
+  const indent = indentOf(before) ?? fallbackIndent;
   const finish = (next: Record<string, unknown>): string =>
     `${JSON.stringify(next, null, indent)}\n`;
 
+  const engines = record(pkg.engines);
   if (reasons.length > 0) {
     if (!force) {
       return {
         refusal:
           `${path} has ${reasons.join(" and ")}, which means it is a copy of the starter: ` +
           `init will not change it. Run init with --force to rewrite its dependencies to the single package ${PACKAGE} ` +
-          "(and its scripts to the three of the shell), or remove the starter's files first",
+          `(and its scripts to the three of the shell), or remove the starter's files first (${MIGRATION_GUIDE} lists them)`,
         notes,
       };
     }
@@ -380,6 +420,13 @@ function planPackage(
     delete next.optionalDependencies;
     delete next.peerDependencies;
     notes.push("rewrote the starter's dependencies and scripts");
+    // The starter needed Bun; the shell runs on Node (and on Bun), so its engines.bun is stale.
+    if (engines.bun !== undefined) {
+      const { bun: _bun, ...rest } = engines;
+      if (Object.keys(rest).length === 0) delete next.engines;
+      else next.engines = rest;
+      notes.push("removed engines.bun");
+    }
     return { after: finish(next), notes };
   }
 
@@ -402,6 +449,9 @@ function planPackage(
     }
   }
   if (changed) next.scripts = nextScripts;
+  if (engines.bun !== undefined) {
+    notes.push('kept your "engines.bun" entry (the starter\'s; the shell does not need it)');
+  }
   return changed ? { after: finish(next), notes } : { after: before, notes };
 }
 
@@ -565,18 +615,26 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
     // 1. the configuration
     if (existing !== null && existing.unknownKeys.length > 0 && !force) {
       refusals.push(
-        `${siteFile(CONFIG_FILE)} has keys that init does not know (${existing.unknownKeys.join(", ")}); ` +
+        `${siteFile(existing.legacy ? LEGACY_CONFIG_FILE : CONFIG_FILE)} has keys that init does not know (${existing.unknownKeys.join(", ")}); ` +
           "run `docusystem doctor` to see what is wrong, or use --force to drop them",
       );
     }
+    // New JSON files are indented the way the repository's formatter wants JSON, so that its own
+    // format check passes on the adoption pull request; an existing file keeps its indentation.
+    const indent = detectJsonIndent(repoRoot);
+    const configBefore = read(siteFile(CONFIG_FILE));
     changes.push(
       planChange(
         siteFile(CONFIG_FILE),
-        read(siteFile(CONFIG_FILE)),
+        configBefore,
         configText(
           config,
           typeof existing?.values.$schema === "string" ? existing.values.$schema : SCHEMA,
+          configBefore === null ? indent : (indentOf(configBefore) ?? indent),
         ),
+        existing?.legacy === true
+          ? `the values of the starter's ${siteFile(LEGACY_CONFIG_FILE)}, domain included`
+          : undefined,
       ),
     );
 
@@ -586,6 +644,7 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
       read(siteFile("package.json")),
       config.slug,
       force,
+      indent,
     );
     if (pkg.refusal !== undefined) refusals.push(pkg.refusal);
     else if (pkg.after !== undefined) {
@@ -695,6 +754,12 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
         changes.push(
           planChange(path, before, next.text, next.changes.join("; ") || "the entries are there"),
         );
+        for (const advice of cooldownAdvice(next.text, {
+          site: siteRel,
+          actions: options.noWorkflow !== true,
+        })) {
+          byHand.push(`${path}: ${advice}`);
+        }
       } catch (error) {
         if (!(error instanceof DependabotShapeError)) throw error;
         byHand.push(
@@ -716,12 +781,17 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
         const before = read(path);
         if (before === null || !isAutoMergeWorkflow(before)) continue;
         const patched = patchAutoMerge(before, siteRel);
-        if (patched.note !== undefined) byHand.push(`${path}: ${patched.note}`);
-        else if (patched.changed) {
+        if (patched.changed) {
           changes.push(
-            planChange(path, before, patched.text, `${siteRel} updates now wait for a person`),
+            planChange(
+              path,
+              before,
+              patched.text,
+              `${siteRel} updates and the shared workflows' pin now wait for a person`,
+            ),
           );
         }
+        if (patched.note !== undefined) byHand.push(`${path}: ${patched.note}`);
       }
     }
   } catch (error) {
@@ -780,6 +850,24 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
       ctx.stdout(`  ${first}`);
       for (const line of rest) ctx.stdout(`    ${line}`);
     }
+  }
+  // What the copied starter left in the site folder: init deletes nothing it did not write.
+  const leftovers = [
+    ...starterLeftovers(siteDir).map(({ name, advice }) => ({ entry: entryName(name), advice })),
+    ...["bun.lock", "bun.lockb"]
+      .filter((lockfile) => existsSync(join(siteDir, lockfile)))
+      .map((lockfile) => ({
+        entry: lockfile,
+        advice:
+          "The shared workflow refuses Bun lockfiles: delete it, and `npm install` writes package-lock.json",
+      })),
+  ];
+  if (leftovers.length > 0) {
+    ctx.stdout("");
+    ctx.stdout(
+      `Left over from the earlier starter (init deletes nothing; ${MIGRATION_GUIDE} has the steps):`,
+    );
+    for (const { entry, advice } of leftovers) ctx.stdout(`  ${siteRel}/${entry}  ${advice}`);
   }
   ctx.stdout("");
   ctx.stdout("A maintainer still has to:");

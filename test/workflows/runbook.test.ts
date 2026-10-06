@@ -108,7 +108,7 @@ describe("merging the release pull request", () => {
       "its branch name, its title and its body, never by the commit subject",
     );
     expect(merging).toContain("creates no tag and no GitHub Release");
-    expect(merging).toContain("the `publish` job is skipped");
+    expect(merging).toContain("`build` and `publish` are skipped");
   });
 
   test("the title the runbook says release-please writes is the title the configuration produces", () => {

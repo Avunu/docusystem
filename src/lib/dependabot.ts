@@ -12,6 +12,11 @@
 //   3. `updates: []`, or a flow list: the yaml Document API replaces the list, comments kept;
 //   4. anything else (not YAML, `updates` is not a list, an entry that is not a mapping): refused with
 //      a DependabotShapeError that carries the snippet, to be added by hand.
+//
+// A bun entry that becomes npm is the entry that tracks `@avunu/docusystem`, so it also gets that package
+// under its `cooldown.exclude` (a cooldown that held the package back would contradict the guide) and the
+// comments above it that name Bun are brought up to date. The entries `init` does not rewrite (an npm entry
+// that was there already, the github-actions entry) are only judged: `cooldownAdvice` says what to add.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -23,6 +28,7 @@ import {
   type YAMLMap,
   type YAMLSeq,
 } from "yaml";
+import { name as PACKAGE, REPOSITORY } from "./package-info.js";
 import { fillTemplate, readScaffold, siteDirProblem } from "./workflows.js";
 
 /**
@@ -146,6 +152,165 @@ function reindent(snippet: string, indent: number): string {
 const entriesOfSeq = (seq: YAMLSeq, doc: Document): Array<DependabotEntry | null> =>
   seq.items.map((item) => (isMap(item) ? entryOf(item.toJS(doc)) : null));
 
+/** What to add under a cooldown so that it holds back everything but `name`. */
+const excludeSnippet = (name: string): string =>
+  `exclude:\n  - ${/^[@!&*]/.test(name) ? JSON.stringify(name) : name}`;
+
+/**
+ * What a person has to add to the entries that still have a cooldown which holds back the docs
+ * package (the npm entry of the site folder) or the shared workflows (the github-actions entry, with
+ * `actions`), judged on the text of the file after `ensureDependabotEntries`. Each item completes the
+ * sentence "<the file>: <item>"; the lines after the first are the YAML to add.
+ */
+export function cooldownAdvice(text: string, o: { site: string; actions: boolean }): string[] {
+  const directory = `/${o.site}`;
+  const advice: string[] = [];
+  for (const entry of readDependabotEntries(text).entries) {
+    if (!entry.cooldown.present) continue;
+    if (entry.ecosystem === "npm" && entry.directories.includes(directory)) {
+      if (!entry.cooldown.excludes.includes(PACKAGE)) {
+        advice.push(
+          `the npm entry for ${directory} has a cooldown that does not exclude "${PACKAGE}", so a release of the package would wait for it; add this under its cooldown:\n${excludeSnippet(PACKAGE)}`,
+        );
+      }
+    } else if (
+      o.actions &&
+      entry.ecosystem === "github-actions" &&
+      entry.directories.includes("/")
+    ) {
+      if (!entry.cooldown.excludes.includes(REPOSITORY)) {
+        advice.push(
+          `the github-actions entry has a cooldown that does not exclude ${REPOSITORY}, so a release of the shared workflows would wait for it; add this under its cooldown:\n${excludeSnippet(REPOSITORY)}`,
+        );
+      }
+    }
+  }
+  return advice;
+}
+
+/** A change to the text of the file: `remove` characters at `at` are replaced by `insert`. */
+interface Edit {
+  at: number;
+  remove: number;
+  insert: string;
+}
+
+/** The end of the line that a scalar ends on, when only blanks or a comment follow it there; null otherwise. */
+function lineEndAfter(text: string, scalar: unknown): number | null {
+  const range = isScalar(scalar) ? scalar.range : null;
+  if (range === null || range === undefined) return null;
+  const newline = text.indexOf("\n", range[1]);
+  const end = newline < 0 ? text.length : newline + 1;
+  return /^[ \t]*(?:#[^\r\n]*)?\r?\n?$/.test(text.slice(range[1], end)) ? end : null;
+}
+
+/** The last scalar of a block node (the last value of the last pair, the last item of a list); null when there is none to find. */
+function lastScalar(node: unknown): unknown {
+  if (isScalar(node)) return node;
+  if (isMap(node) && !node.flow) return lastScalar(node.items.at(-1)?.value);
+  if (isSeq(node) && !node.flow) return lastScalar(node.items.at(-1));
+  return null;
+}
+
+/** The insertion of whole lines at `at`, the start of a line or the end of a text that lacks its last line break. */
+const lineEdit = (text: string, at: number, lines: string): Edit => ({
+  at,
+  remove: 0,
+  insert: at === text.length && !text.endsWith("\n") ? `\n${lines}` : lines,
+});
+
+/**
+ * The edit that puts `name` under the `cooldown.exclude` of the entry `item` of `text`: a new `exclude:` list
+ * after the last line of a block cooldown, or one more item at the end of its block `exclude:` list.
+ * "none" when the entry has no cooldown or excludes `name` already; "hand" when its cooldown is written in a
+ * way that cannot be extended without rewriting it (a flow mapping or list, an empty `exclude:`).
+ */
+function cooldownExclusion(item: YAMLMap, text: string, name: string): Edit | "none" | "hand" {
+  const cooldown = item.get("cooldown", true);
+  if (!isMap(cooldown)) return "none";
+  const quoted = JSON.stringify(name);
+  const exclude = cooldown.get("exclude", true);
+  if (isSeq(exclude) && exclude.items.some((entry) => isScalar(entry) && entry.value === name)) {
+    return "none";
+  }
+  if (cooldown.flow) return "hand";
+  const indentOf = (start: number | undefined, pattern: RegExp): string | null => {
+    if (start === undefined) return null;
+    const line = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
+    return pattern.exec(line)?.[1] ?? null;
+  };
+  if (exclude === undefined) {
+    const key = cooldown.items[0]?.key;
+    const indent = indentOf(isScalar(key) ? key.range?.[0] : undefined, /^( *)$/);
+    const at = lineEndAfter(text, lastScalar(cooldown));
+    if (indent === null || at === null) return "hand";
+    return lineEdit(text, at, `${indent}exclude:\n${indent}  - ${quoted}\n`);
+  }
+  if (isSeq(exclude) && !exclude.flow && exclude.items.length > 0) {
+    const first = exclude.items[0];
+    const indent = indentOf(isScalar(first) ? first.range?.[0] : undefined, /^( *)-[ \t]+$/);
+    const at = lineEndAfter(text, exclude.items.at(-1));
+    if (indent === null || at === null) return "hand";
+    return lineEdit(text, at, `${indent}- ${quoted}\n`);
+  }
+  return "hand";
+}
+
+/** The Document API twin of `cooldownExclusion`, for a file that is rewritten as a whole anyway; true when it added `name`. */
+function excludeFromCooldown(item: YAMLMap, doc: Document, name: string): boolean {
+  const cooldown = item.get("cooldown", true);
+  if (!isMap(cooldown)) return false;
+  const exclude = cooldown.get("exclude", true);
+  if (isSeq(exclude)) {
+    if (exclude.items.some((entry) => isScalar(entry) && entry.value === name)) return false;
+    exclude.add(doc.createNode(name));
+    return true;
+  }
+  if (exclude !== undefined) return false;
+  cooldown.set("exclude", doc.createNode([name]));
+  return true;
+}
+
+/** `text` with `edits` applied; the edits are positions in `text` and must not overlap. */
+function applyEdits(text: string, edits: Edit[]): string {
+  let result = text;
+  for (const edit of [...edits].sort((a, b) => b.at - a.at)) {
+    result = `${result.slice(0, edit.at)}${edit.insert}${result.slice(edit.at + edit.remove)}`;
+  }
+  return result;
+}
+
+/**
+ * The full-line comments that talk about the site folder and name Bun, now that its entry is npm's: "Bun"
+ * becomes "npm" (the same length, so no position moves). Other comments, and every other mention of bun
+ * (`bun.lock`, a bun entry for another folder), stay as they are.
+ */
+function refreshBunComments(text: string, site: string): { text: string; changed: boolean } {
+  const lines = text.split("\n");
+  let changed = false;
+  for (let start = 0; start < lines.length;) {
+    if (!/^[ \t]*#/.test(lines[start] ?? "")) {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < lines.length && /^[ \t]*#/.test(lines[end] ?? "")) end += 1;
+    const block = lines.slice(start, end);
+    if (block.join("\n").includes(`${site}/`) && block.some((line) => /\bBun\b/.test(line))) {
+      for (let i = start; i < end; i += 1) {
+        const line = lines[i] ?? "";
+        const next = line.replace(/\bBun\b(?!\.lock)/g, "npm");
+        if (next !== line) {
+          lines[i] = next;
+          changed = true;
+        }
+      }
+    }
+    start = end;
+  }
+  return { text: lines.join("\n"), changed };
+}
+
 /**
  * Adds what a docs shell needs to a dependabot.yml and says what it did:
  *
@@ -240,24 +405,45 @@ export function ensureDependabotEntries(
 
   const additions = [...(needNpm ? [npm] : []), ...(needActions ? [actions] : [])];
 
-  // The conversion edits the characters `bun` in place: three letters for three letters, so the
-  // offsets of the parsed document stay valid for the insertion below.
+  // The conversion edits the characters `bun` in place (three letters for three letters) and may add
+  // the package to the entry's cooldown; the parsed document is read again afterwards, because the
+  // insertion below needs the positions of the text as it is then.
   if (isSeq(updates) && updates.items.length > 0 && !updates.flow) {
+    let list: YAMLSeq = updates;
     if (convert) {
       const item = updates.items[bunIndex];
       const value = isMap(item) ? (item as YAMLMap).get("package-ecosystem", true) : null;
       const range = isScalar(value) ? value.range : null;
-      if (range === null || range === undefined) {
+      if (range === null || range === undefined || !isMap(item)) {
         throw shape("has a bun entry that cannot be converted in place", needNpm, needActions);
       }
-      const original = result.slice(range[0], range[1]);
-      result = `${result.slice(0, range[0])}${original.replace("bun", "npm")}${result.slice(range[1])}`;
+      const edits: Edit[] = [
+        {
+          at: range[0],
+          remove: range[1] - range[0],
+          insert: text.slice(range[0], range[1]).replace("bun", "npm"),
+        },
+      ];
+      const exclusion = cooldownExclusion(item, text, PACKAGE);
+      if (exclusion !== "none" && exclusion !== "hand") {
+        edits.push(exclusion);
+        changes.push(`excluded ${PACKAGE} from the cooldown of the npm entry for ${directory}`);
+      }
+      result = applyEdits(text, edits);
+      const refreshed = refreshBunComments(result, o.site);
+      if (refreshed.changed) {
+        result = refreshed.text;
+        changes.push("brought the comments that named Bun up to date");
+      }
+      const live = parseDocument(result).get("updates", true);
+      if (!isSeq(live)) throw shape("could not be extended", needNpm, needActions);
+      list = live;
     }
     if (additions.length === 0) return finish(result, changes);
 
-    const first = updates.items[0];
+    const first = list.items[0];
     const start = isMap(first) ? first.range?.[0] : undefined;
-    const rangeEnd = updates.range?.[1];
+    const rangeEnd = list.range?.[1];
     if (start === undefined || rangeEnd === undefined) {
       throw shape("has a list of entries whose position cannot be found", needNpm, needActions);
     }
@@ -299,7 +485,12 @@ export function ensureDependabotEntries(
   if (isSeq(updates) && updates.items.length > 0) {
     if (convert) {
       const item = updates.items[bunIndex];
-      if (isMap(item)) item.set("package-ecosystem", "npm");
+      if (isMap(item)) {
+        item.set("package-ecosystem", "npm");
+        if (excludeFromCooldown(item, doc, PACKAGE)) {
+          changes.push(`excluded ${PACKAGE} from the cooldown of the npm entry for ${directory}`);
+        }
+      }
     }
     updates.flow = false;
     if (isSeq(snippetSeq)) {
@@ -308,5 +499,9 @@ export function ensureDependabotEntries(
   } else {
     (root as YAMLMap).set("updates", snippetSeq);
   }
-  return finish(doc.toString({ lineWidth: 0 }), changes);
+  const written = doc.toString({ lineWidth: 0 });
+  if (!convert) return finish(written, changes);
+  const refreshed = refreshBunComments(written, o.site);
+  if (refreshed.changed) changes.push("brought the comments that named Bun up to date");
+  return finish(refreshed.text, changes);
 }

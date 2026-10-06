@@ -117,11 +117,62 @@ test("an HTML block that a blank line ends before its closing tag warns", () => 
   expect(rules('<p align="center">\n  <img src="a.png">\n</p>\n')).toEqual([]);
 });
 
-test("task lists, table alignment and template expressions in links warn", () => {
+test("task lists and table alignment warn", () => {
   expect(rules("- [x] done\n- [ ] open")).toEqual(["warning:task-list@1", "warning:task-list@2"]);
   expect(rules("| a | b |\n|:--|--:|\n| 1 | 2 |")).toEqual(["warning:table-alignment@2"]);
-  expect(rules("[x](https://x.org/${HOME})")).toEqual(["warning:template-link@1"]);
-  expect(rules("[x](https://x.org/%24%7BHOME%7D)")).toEqual([]);
+});
+
+// Jx evaluates a `${...}` in anything that becomes an attribute (a link or image address, an autolink,
+// a URL, a tag, a directive, the language of a fence), as JavaScript, when the site is built. Staging
+// writes it inert (inert.ts), so nothing runs, but the link is then not what the page says: an error,
+// like the other constructs that lose what was written.
+test("a `${...}` where it would become an attribute is an error, in every place that can hold one", () => {
+  const live = [
+    "[x](https://x.org/${HOME})",
+    "![x](https://x.org/${HOME}.png)",
+    "[x](<https://x.org/${HOME}>)",
+    "<https://x.org/${HOME}>",
+    "A bare address https://x.org/${HOME} in a sentence.",
+    "A bare address www.x.org/${HOME} in a sentence.",
+    '<img src="${HOME}" alt="x">',
+    '<div data-a="${HOME}">text</div>',
+    ":::note{class='${HOME}'}\ntext\n:::",
+    "- [x](https://x.org/${HOME})",
+    "> [x](https://x.org/${HOME})",
+    "| [x](https://x.org/${HOME}) | b |",
+    "## [x](https://x.org/${HOME})",
+    "[x](https://x.org/&#36;{HOME})",
+    "[x](https://x.org/$\\{HOME})",
+    "[x](https://x.org/&dollar;&lbrace;HOME})",
+    "```${HOME}\ncode\n```",
+    "~~~js ${HOME}\ncode\n~~~",
+  ];
+  for (const source of live) {
+    expect(rules(source), source).toContain("error:template-expression@1");
+  }
+});
+
+test("a `${...}` in prose, a code span or a code block is text, and is not reported", () => {
+  for (const source of [
+    "Set ${HOME} first.",
+    "Set `${HOME}` first.",
+    "A [link with `${HOME}` in its text](a.md).",
+    "```bash\necho ${HOME} and ${{ secrets.TOKEN }}\n```",
+    "1. A step:\n\n   ```yaml\n   run: echo ${{ github.sha }}\n   ```",
+    "> [!TIP]\n> ```bash\n> export HOME_COPY=${HOME}\n> ```",
+    "| Variable | Meaning |\n| --- | --- |\n| `${HOME}` | Home folder |",
+    "[x](https://x.org/%24%7BHOME%7D)",
+  ]) {
+    expect(rules(source), source).toEqual([]);
+  }
+});
+
+test("the message says what happens to the text and what to write instead", () => {
+  const [issue] = lintMarkdown("[x](https://x.org/${HOME})", "a.md");
+  expect(issue).toMatchObject({ level: "error", rule: "template-expression", line: 1 });
+  expect(issue!.message).toContain("zero-width space");
+  expect(issue!.message).toContain("%24%7B...%7D");
+  expect(issue!.message).toContain("code span");
 });
 
 test("HTML comments, pre blocks and fences hide their content from the inline rules", () => {
@@ -154,6 +205,13 @@ test("formatIssue names the Markdown folder when it is not docs/", () => {
   const issue = { file: "a.md", line: 2, level: "error", rule: "footnote", message: "m" } as const;
   expect(formatIssue(issue)).toBe("docs/a.md:2  m");
   expect(formatIssue(issue, { prefix: "documentation" })).toBe("documentation/a.md:2  m");
+  expect(formatIssue(issue, { prefix: "guide/book" })).toBe("guide/book/a.md:2  m");
+});
+
+test("formatIssue shows the bare file when the repository root is the Markdown folder", () => {
+  const issue = { file: "a.md", line: 2, level: "error", rule: "footnote", message: "m" } as const;
+  expect(formatIssue(issue, { prefix: "" })).toBe("a.md:2  m");
+  expect(formatIssue(issue, { prefix: "." })).toBe("a.md:2  m");
 });
 
 test("a page whose frontmatter is not valid YAML is an error at the line of the problem", () => {

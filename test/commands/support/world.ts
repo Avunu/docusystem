@@ -47,7 +47,7 @@ export interface World {
     assemble: Array<Parameters<PipelineDeps["assemble"]>[0]>;
     runJx: Array<{ command: string[]; cwd: string }>;
     postbuild: Array<{ config: DocsConfig & { branch: string } }>;
-    assertions: Array<{ cname: string; routes: number | null }>;
+    assertions: Array<Parameters<PipelineDeps["assertBuild"]>[2]>;
     lockHeld: boolean[];
   };
 
@@ -235,7 +235,8 @@ export function makeWorld(options: WorldOptions = {}): World {
       world.calls.push("lint");
       return world.lint;
     },
-    formatIssue: (issue) => `docs/${issue.file}:${issue.line}  ${issue.message}`,
+    formatIssue: (issue, o) =>
+      `${o?.prefix ?? "docs"}/${issue.file}:${issue.line}  ${issue.message}`,
     writeNav: () => {
       world.calls.push("nav");
       const urls = Array.from({ length: docsPages() }, (_, i) =>
@@ -247,9 +248,16 @@ export function makeWorld(options: WorldOptions = {}): World {
         sections: [],
         expandAll: true,
         pages: Object.fromEntries(
-          urls.map((url) => [
+          urls.map((url, i) => [
             url,
-            { title: url, description: "", section: "", prev: null, next: null, edit: "" },
+            {
+              title: url,
+              description: "",
+              section: "",
+              prev: null,
+              next: null,
+              edit: i === 0 ? "README.md" : `page-${i}.md`,
+            },
           ]),
         ),
         flat: [],

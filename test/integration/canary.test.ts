@@ -7,18 +7,19 @@
 // real after the packages are merged. jx-canary.test.ts runs the same trees through the real pipeline
 // and the real Jx with stand-ins for those packages, and always runs.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { run } from "../../src/main.js";
 import { validateConfig } from "../../src/lib/config.js";
-import { readBundledCatalog } from "../../src/lib/catalog.js";
+import { readBundledCatalog, readBundledCatalogDocument } from "../../src/lib/catalog.js";
 import { contrastFailures } from "../../src/lib/contrast.js";
 import { jxVersions } from "../../src/lib/jx.js";
 import { lintDocs } from "../../src/lib/lint.js";
 import { acquireLock } from "../../src/lib/lock.js";
+import { json, serve } from "../config/server.js";
 import { REPO_ROOT, listTree, runCli, tempDir } from "../support/index.js";
-import { jxEnv, repoFrom, type Repo } from "./support.js";
+import { JX_CLI, jxEnv, repoFrom, type Repo } from "./support.js";
 
 // ---- is everything this file needs implemented? ----
 
@@ -53,6 +54,41 @@ function cli(repo: Repo, argv: string[], env: NodeJS.ProcessEnv = {}) {
 const occurrences = (text: string, needle: string): number => text.split(needle).length - 1;
 
 const cleanRepo = (): Repo => repoFrom("canary/clean");
+
+interface HeadEntry {
+  tagName: string;
+  attributes: Record<string, string>;
+}
+
+/** The first JSON block below the heading of a page of the documentation: the example the page shows. */
+function exampleBelow(page: string, heading: string): { jx: { $head: HeadEntry[] } } {
+  const lines = readFileSync(join(REPO_ROOT, ...page.split("/")), "utf8").split("\n");
+  const start = lines.indexOf(heading);
+  expect(start, `${page} has the heading ${heading}`).toBeGreaterThanOrEqual(0);
+  const open = lines.indexOf("```json", start);
+  const close = lines.indexOf("```", open + 1);
+  expect(open, `${page} shows a JSON example below ${heading}`).toBeGreaterThan(start);
+  return JSON.parse(lines.slice(open + 1, close).join("\n")) as { jx: { $head: HeadEntry[] } };
+}
+
+/** The `<meta>` and `<link>` tags of a built page's head, as `{ tagName, ...attributes }`. */
+function headTags(html: string): Array<Record<string, string>> {
+  const head = /<head>([\s\S]*?)<\/head>/.exec(html)?.[1] ?? "";
+  return [...head.matchAll(/<(meta|link)\b([^>]*)>/g)].map((tag) => {
+    const attributes = [...tag[2]!.matchAll(/([\w:-]+)="([^"]*)"/g)].map((a) => [a[1]!, a[2]!]);
+    return Object.fromEntries([["tagName", tag[1]!], ...attributes]) as Record<string, string>;
+  });
+}
+
+/** Builds `repo` (strict, as CI does) with `jx` set in its configuration. */
+async function buildWithJx(repo: Repo, jx: unknown) {
+  const file = join(repo.siteDir, "docusystem.config.json");
+  const config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+  writeFileSync(file, `${JSON.stringify({ ...config, jx }, null, 2)}\n`);
+  const built = await cli(repo, ["build"]);
+  expect(built.code, `${built.stdout}\n${built.stderr}`).toBe(0);
+  return built.stdout;
+}
 
 describe.skipIf(waiting.length > 0)(
   waiting.length === 0
@@ -110,6 +146,42 @@ describe.skipIf(waiting.length > 0)(
         expect(passed.stdout).toContain(`Done: ${routes} routes`);
       });
 
+      // The facts behind the note that `docusystem jx validate` prints, and behind the Troubleshooting
+      // paragraph and the command-line reference. If this fails after a Jx bump, a fact has changed: re-check
+      // `jx validate` on the assembled root and, when it works, drop the note (src/commands/jx.ts) and the
+      // warning in docs/guide/troubleshooting.md.
+      test("`jx validate` cannot work on the generated root: the schema does not survive a run, and the package's own pages are invalid", async () => {
+        const repo = cleanRepo();
+        const schemaFile = join(repo.paths.root, "project.schema.json");
+        const schema = await cli(repo, ["jx", "schema"]);
+        expect(schema.code, schema.stderr).toBe(0);
+        expect(existsSync(schemaFile)).toBe(true); // Jx wrote it ...
+
+        const validate = await cli(repo, ["jx", "validate"]);
+        expect(existsSync(schemaFile)).toBe(false); // ... and the next docusystem run assembled the root afresh
+        expect(validate.code).toBe(1);
+        expect(validate.stderr).toContain("docusystem: note: `jx validate` does not work");
+        expect(`${validate.stdout}\n${validate.stderr}`).toContain("project.schema.json not found");
+
+        // By hand, with the schema in place: Jx itself rejects the package's pages and layouts.
+        const byHand = (command: string) =>
+          new Promise<{ code: number; output: string }>((resolve) => {
+            const child = spawn(process.execPath, [JX_CLI, command, repo.paths.root], {
+              env: jxEnv(),
+            });
+            let output = "";
+            child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+            child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+            child.on("close", (code) => resolve({ code: code ?? 1, output }));
+          });
+        expect((await byHand("schema")).code).toBe(0);
+        const invalid = await byHand("validate");
+        expect(invalid.code, invalid.output).toBe(1);
+        expect(invalid.output).toContain("Project is INVALID");
+        expect(invalid.output).toMatch(/^pages\/index\.json:$/m);
+        expect(invalid.output).toMatch(/^layouts\/base\.json:$/m);
+      });
+
       test("lint is clean, links passes on the published site, info says where everything is", async () => {
         const repo = cleanRepo();
         expect((await cli(repo, ["lint"])).code).toBe(0);
@@ -130,12 +202,122 @@ describe.skipIf(waiting.length > 0)(
         expect(info.lastBuild?.strict).toBe(true);
       });
 
+      test("a title that holds markup is shown as text, not written into the head (front matter, heading)", async () => {
+        const payload =
+          '</title><script>document.documentElement.setAttribute("data-pwn","1")</script>';
+        const repo = repoFrom("canary/clean", {
+          "docs/guide/evil-front-matter.md": `---\ntitle: 'Evil ${payload}'\n---\n\nBody.\n`,
+          "docs/guide/evil-code.md": `# Code \`${payload}\` span\n\nBody.\n`,
+          "docs/guide/evil-entity.md": `# Entity &lt;/title&gt;&lt;script&gt;x&lt;/script&gt;\n\nBody.\n`,
+        });
+        const { code, stdout, stderr } = await cli(repo, ["check", "--ci"]);
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        for (const page of ["evil-front-matter", "evil-code", "evil-entity"]) {
+          const html = readFileSync(
+            join(repo.paths.dist, "docs", "guide", page, "index.html"),
+            "utf8",
+          );
+          const head = html.slice(0, html.lastIndexOf("</head>"));
+          expect(occurrences(head, "</title>"), page).toBe(1);
+          expect(head, page).toMatch(/<title>[^<]*&lt;\/title&gt;&lt;script&gt;[^<]*<\/title>/);
+          expect(html, page).not.toMatch(/<script>(?:document|x)/);
+        }
+      });
+
       test("a second build is the same site", async () => {
         const repo = cleanRepo();
         await cli(repo, ["build"]);
         const first = listTree(repo.paths.dist);
         expect((await cli(repo, ["build"])).code).toBe(0);
         expect(listTree(repo.paths.dist)).toEqual(first);
+      });
+
+      test("a README copied into docs/ passes a strict check: raw HTML images and links to repository files are repaired", async () => {
+        const repo = repoFrom("canary/clean", {
+          "assets/logo.png": "png",
+          LICENSE: "MIT",
+          "docs/readme-copy.md": [
+            "---",
+            "title: README copy",
+            "---",
+            "",
+            '<p align="center"><img src="./assets/logo.png" alt="Logo" width="100"></p>',
+            "",
+            '<p align="center"><img src="docs/assets/square.svg" alt="Square"></p>',
+            "",
+            '<div align="center">',
+            '  <a href="docs/guide/install.md">Install</a> | <a href="LICENSE">License</a>',
+            "</div>",
+            "",
+            "![Logo](./assets/logo.png)",
+            "",
+          ].join("\n"),
+        });
+        const { code, stdout, stderr } = await cli(repo, ["check"]);
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(stdout).toContain(
+          "stage: docs/readme-copy.md:5  ./assets/logo.png -> https://github.com/Avunu/docusystem-example/raw/main/assets/logo.png",
+        );
+        expect(stdout).toContain(
+          "stage: docs/readme-copy.md:7  docs/assets/square.svg -> assets/square.svg",
+        );
+        expect(`${stdout}\n${stderr}`).not.toMatch(/references missing asset|which does not exist/);
+        const page = readFileSync(
+          join(repo.paths.dist, "docs", "readme-copy", "index.html"),
+          "utf8",
+        );
+        const raw = "https://github.com/Avunu/docusystem-example/raw/main/assets/logo.png";
+        expect(occurrences(page, `src="${raw}"`)).toBe(2); // the HTML image and the Markdown one
+        expect(page).toContain('src="/content/docs/assets/square.svg"'); // in docs/, so Jx published it
+        expect(page).toContain('<a href="/docs/guide/install/">Install</a>');
+        expect(page).toContain(
+          '<a href="https://github.com/Avunu/docusystem-example/blob/main/LICENSE">License</a>',
+        );
+      });
+    });
+
+    describe("the jx fragment", () => {
+      const PAGES = ["index.html", "docs/index.html", "docs/guide/install/index.html"];
+      const read = (repo: Repo, page: string): string =>
+        readFileSync(join(repo.paths.dist, ...page.split("/")), "utf8");
+
+      test.each([
+        ["docs/reference/configuration.md", "## The `jx` fragment"],
+        ["docs/guide/overrides.md", "## Rung 4: the `jx` fragment"],
+      ])("the example of %s takes effect on every page", async (page, heading) => {
+        const { jx } = exampleBelow(page, heading);
+        expect(jx.$head.length).toBeGreaterThan(0);
+        const repo = cleanRepo();
+        await buildWithJx(repo, jx);
+        for (const file of PAGES) {
+          const tags = headTags(read(repo, file));
+          for (const entry of jx.$head) {
+            expect(tags, `${file} has ${JSON.stringify(entry)}`).toContainEqual({
+              tagName: entry.tagName,
+              ...entry.attributes,
+            });
+          }
+        }
+      });
+
+      test("a tag the layout also sets is not replaced: the layout's robots tag is the one in the page", async () => {
+        const repo = cleanRepo();
+        const stdout = await buildWithJx(repo, {
+          $head: [{ tagName: "meta", attributes: { name: "robots", content: "noindex" } }],
+        });
+        for (const file of PAGES) {
+          const robots = headTags(read(repo, file)).filter((tag) => tag.name === "robots");
+          expect(robots, file).toEqual([
+            { tagName: "meta", name: "robots", content: "index, follow" },
+          ]);
+        }
+        // only the 404 page keeps itself out of search engines
+        expect(read(repo, "404.html")).toContain('content="noindex, nofollow"');
+        // ...and the fragment was applied, so the build does not say that nothing was changed
+        expect(stdout).toContain(
+          'build: overrides: the "jx" setting of docusystem.config.json (merged into project.json)',
+        );
+        expect(stdout).not.toContain("none (every file comes from the package)");
       });
     });
 
@@ -222,6 +404,107 @@ describe.skipIf(waiting.length > 0)(
           /^::error file=docs\/README\.md,line=\d+,title=lint::.*Reference-style links/m,
         );
         expect(stdout.split("\n").at(-1)).toBe("check: FAILED");
+      });
+
+      test("a Markdown folder that is not docs/ is the folder that lint, the build output and the annotations name", async () => {
+        // "docs": "../documentation": the paths must be the ones GitHub can find in the repository
+        const repo = repoFrom("canary/broken");
+        renameSync(repo.docsDir, join(repo.dir, "documentation"));
+        writeFileSync(
+          join(repo.siteDir, "docusystem.config.json"),
+          JSON.stringify({ ...repo.config, docs: "../documentation" }),
+        );
+
+        const lint = await cli(repo, ["lint"]);
+        expect(lint.code).toBe(1);
+        expect(lint.stdout).toMatch(/^error: documentation\/README\.md:\d+ .*Footnotes/m);
+
+        const checked = await cli(repo, ["check", "--ci"]);
+        expect(checked.code).toBe(1);
+        expect(checked.stderr).toMatch(/^lint: error: documentation\/README\.md:\d+ .*Footnotes/m);
+        expect(checked.stdout).toMatch(
+          /^::error file=documentation\/README\.md,line=\d+,title=lint::.*Footnotes/m,
+        );
+        expect(`${lint.stdout}\n${checked.stdout}\n${checked.stderr}`).not.toMatch(
+          /\bdocs\/README/,
+        );
+      });
+    });
+
+    describe("a raw HTML anchor in an otherwise clean tree", () => {
+      // The page of the finding: Markdown that the earlier starter built and published with an empty link.
+      const rawAnchor = (): Repo =>
+        repoFrom("canary/clean", {
+          "docs/problems/raw.md":
+            '---\ntitle: Raw anchor\n---\n\nRead <a href="../guide/install.md">how to install</a> first.\n',
+        });
+
+      test("a lenient build (the default outside CI, and what dev runs) fails on the empty link and names the page, the file and why", async () => {
+        const repo = rawAnchor();
+        const { code, stdout, stderr } = await runCli(["build"], {
+          cwd: repo.siteDir,
+          env: jxEnv(),
+        });
+        const all = `${stdout}\n${stderr}`;
+        expect(code, all).toBe(1);
+        expect(existsSync(repo.paths.dist)).toBe(false);
+        // lint says where (file:line, whatever its level is called) ...
+        expect(all).toMatch(/^lint: (?:warning|error): docs\/problems\/raw\.md:5 .*<a href>/m);
+        // ... the assertion names the same file, so the two lines can be put together ...
+        expect(all).toMatch(
+          /^assert: FAIL: links with nothing inside: \/docs\/problems\/raw\/ from docs\/problems\/raw\.md \(<a href="\/docs\/guide\/install\/">\)/m,
+        );
+        // ... and the closing lines say that leniency does not reach it, instead of "only warnings".
+        expect(all).toMatch(
+          /^docusystem: 1 output assertion\(s\) failed\. Nothing was published\.$/m,
+        );
+        expect(all).toMatch(
+          /^docusystem: a lenient build .* output assertions fail every build\./m,
+        );
+        expect(all).not.toMatch(/only warnings/);
+      });
+
+      test("the same page written as a Markdown link builds, with no failure and no leniency notice", async () => {
+        const repo = repoFrom("canary/clean", {
+          "docs/problems/raw.md":
+            "---\ntitle: Raw anchor\n---\n\nRead [how to install](../guide/install.md) first.\n",
+        });
+        const { code, stdout, stderr } = await runCli(["build"], {
+          cwd: repo.siteDir,
+          env: jxEnv(),
+        });
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(`${stdout}\n${stderr}`).not.toMatch(/FAIL|lenient build/);
+      });
+    });
+
+    describe("a hostile live catalog", () => {
+      // The compiler evaluates a `${...}` in the text that a page renders, and the switcher renders the
+      // title, slug and links of the catalog: `--refresh-catalog` must never let one through.
+      test("--refresh-catalog refuses a catalog with a template expression: it is not compiled, the bundled catalog is used", async () => {
+        const marker = join(tempDir(), "evaluated");
+        const hostile = structuredClone(readBundledCatalogDocument());
+        const victim = hostile.projects[1];
+        if (victim === undefined)
+          throw new Error("the bundled catalog has fewer than two projects");
+        victim.title = `T\${process.getBuiltinModule(\`fs\`).writeFileSync(\`${marker}\`, \`x\`)}T`;
+        victim.docs = "https://avunu.net/${process.cwd()}";
+        const url = await serve(json(hostile));
+
+        const repo = cleanRepo();
+        const { code, stdout, stderr } = await cli(repo, ["build", "--refresh-catalog"], {
+          DOCUSYSTEM_CATALOG_URL: url,
+        });
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(`${stdout}\n${stderr}`).toMatch(
+          /catalog: .*does not match the catalog contract; using the catalog bundled with/,
+        );
+        expect(`${stdout}\n${stderr}`).toContain('projects[1].title holds a "${"');
+        expect(existsSync(marker)).toBe(false);
+        expect(JSON.parse(readFileSync(repo.paths.manifest, "utf8")).catalog).toBe("bundled");
+        const page = readFileSync(join(repo.paths.dist, "index.html"), "utf8");
+        expect(page).not.toContain("T${");
+        expect(page).not.toContain(dirname(marker));
       });
     });
 

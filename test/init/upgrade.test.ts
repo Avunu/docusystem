@@ -308,7 +308,7 @@ describe("upgrade: finding the site", () => {
 });
 
 describe.each(PILOTS)("upgrade in a copy of %s's .github", (pilot) => {
-  test("the bun entry becomes npm by one line", async () => {
+  test("the bun entry becomes npm and excludes the package from its cooldown", async () => {
     const root = makeRepo({
       origin: `https://github.com/Avunu/${pilot}`,
       files: {
@@ -326,10 +326,17 @@ describe.each(PILOTS)("upgrade in a copy of %s's .github", (pilot) => {
       readFixture("example-shell", ".github", "workflows", "docs.yml"),
     );
     const before = readIn(root, ".github/dependabot.yml") ?? "";
-    await upgrade(root);
+    const { out } = await upgrade(root);
     const after = readIn(root, ".github/dependabot.yml") ?? "";
-    const changed = after.split("\n").filter((line, i) => line !== before.split("\n")[i]);
-    expect(changed).toEqual(["  - package-ecosystem: npm"]);
+    expect(after).toContain("  - package-ecosystem: npm\n    directory: /docs-site");
+    expect(after).toContain(
+      '    cooldown:\n      default-days: 7\n      exclude:\n        - "@avunu/docusystem"\n',
+    );
+    expect(after.split("\n")).toHaveLength(before.split("\n").length + 2);
+    expect(out).toContain("excluded @avunu/docusystem from the cooldown");
+    expect(out.includes("the github-actions entry has a cooldown")).toBe(
+      pilot === "erpnext_taskview",
+    );
   });
 });
 

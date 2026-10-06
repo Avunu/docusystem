@@ -45,29 +45,33 @@ Everything it chose is printed under "chosen for you". A value it cannot infer i
 
 It writes these files (the same list as the [overview](../README.md#what-a-project-keeps)):
 
-| File                                          | Purpose                                                                                                                                      |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs-site/docusystem.config.json`            | The seven identity keys. See the [config reference](../reference/configuration.md).                                                          |
-| `docs-site/package.json`                      | One dependency, `@avunu/docusystem`, and the scripts `dev`, `build` and `check`.                                                             |
-| `docs-site/.gitignore`                        | `node_modules/`, `dist/` and `.docusystem/`.                                                                                                 |
-| `.github/workflows/docs.yml`                  | Checks the site on every pull request that touches the docs.                                                                                 |
-| `.github/workflows/docs-publish.yml`          | Builds on the default branch and publishes once the site is enabled.                                                                         |
-| `.github/dependabot.yml`                      | An npm entry for the site folder, plus a `github-actions` entry if the repository has none. An existing file is appended to, never replaced. |
-| `.github/workflows/dependabot-auto-merge.yml` | Only if the repository has one: a one-line patch that keeps pull requests for the docs site out of auto-merge.                               |
+| File                                          | Purpose                                                                                                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs-site/docusystem.config.json`            | The seven identity keys. See the [config reference](../reference/configuration.md).                                                                   |
+| `docs-site/package.json`                      | One dependency, `@avunu/docusystem`, and the scripts `dev`, `build` and `check`.                                                                      |
+| `docs-site/.gitignore`                        | `node_modules/`, `dist/` and `.docusystem/`.                                                                                                          |
+| `.github/workflows/docs.yml`                  | Checks the site on every pull request that touches the docs.                                                                                          |
+| `.github/workflows/docs-publish.yml`          | Builds on the default branch and publishes once the site is enabled.                                                                                  |
+| `.github/dependabot.yml`                      | An npm entry for the site folder, plus a `github-actions` entry if the repository has none. An existing file is appended to, never replaced.          |
+| `.github/workflows/dependabot-auto-merge.yml` | Only if the repository has one: a small patch to its job condition that keeps pull requests for the docs site and the workflow pin out of auto-merge. |
 
 Both workflows pin the shared workflows to the commit of the tag `v<installed version>`, found with `git ls-remote`. If that cannot be resolved (offline, or the tag does not exist) `init` exits 1 and names `--workflow-sha`; it never falls back to a tag.
 
 Useful options:
 
-| Option                                                     | Effect                                                                                                     |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--dry-run`                                                | Prints every file and diff, writes nothing.                                                                |
-| `--site-dir <dir>`                                         | Uses another folder than `docs-site`, relative to the repository root.                                     |
-| `--docs <path>`                                            | Sets the Markdown folder, relative to the site folder (default `../docs`).                                 |
-| `--no-workflow`, `--no-dependabot`, `--no-patch-automerge` | Skips that part.                                                                                           |
-| `--force`                                                  | Overwrites a differing workflow, or rewrites an existing `package.json`'s dependencies to the one package. |
+| Option                                                     | Effect                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`                                                | Prints every file and diff, writes nothing.                                                                               |
+| `--name`, `--tagline`, `--slug`, `--platform`, `--license` | Sets that value instead of inferring it. `--tagline` and `--name` are needed for a repository that is not in the catalog. |
+| `--domain <domain>`                                        | Sets the domain instead of the slug with `_` written as `-`, plus `.avunu.net`.                                           |
+| `--site-dir <dir>`                                         | Uses another folder than `docs-site`, relative to the repository root.                                                    |
+| `--docs <path>`                                            | Sets the Markdown folder, relative to the site folder (default `../docs`).                                                |
+| `--no-workflow`, `--no-dependabot`, `--no-patch-automerge` | Skips that part.                                                                                                          |
+| `--force`                                                  | Overwrites a differing workflow, or rewrites an existing `package.json`'s dependencies to the one package.                |
 
 `init` refuses to overwrite a workflow that differs from its own scaffold (a workflow copied from the earlier starter counts) and refuses a `package.json` that has a `postinstall` script or any `@jxsuite/*` dependency, because that is a sign of the earlier copy-the-template starter. Pass `--force` once you have read what it would replace. Run `docusystem init --help` for the whole option list.
+
+A repository that already has a `docs-site/` copied from the earlier starter follows [Migrating from the earlier starter](migrating-from-the-starter.md): `init` reads the starter's `docs.config.json` (so the published domain is kept), and lists the starter's files that are still in the folder.
 
 ## Check the result
 
@@ -84,15 +88,17 @@ This runs the maintainer checklist as far as a clone can show it, offline: the c
 Once per repository, none of it possible from a pull request; `init` and `doctor` print the same list with your values filled in:
 
 1. GitHub Pages source: GitHub Actions.
-2. The custom domain, with Enforce HTTPS once the certificate exists.
-3. DNS: a `CNAME` from the domain's first label to `avunu.github.io` (DNS only until the certificate exists).
-4. The repository variable `DOCS_SITE_ENABLED` set to `true`.
-5. Branch protection on the default branch, because every push to it publishes.
-6. A `docs: https://<domain>` line in the project's avunu.net catalog entry.
+2. The domain `avunu.net` verified for the GitHub organization, once and before any DNS record, so that no other account can claim the subdomain if the site is ever unpublished while its record remains.
+3. The custom domain, with Enforce HTTPS once the certificate exists.
+4. DNS: a `CNAME` from the domain's first label to `avunu.github.io` (DNS only until the certificate exists).
+5. The repository variable `DOCS_SITE_ENABLED` set to `true`.
+6. Branch protection on the default branch, because every push to it publishes.
+7. A `docs: https://<domain>` line in the project's avunu.net catalog entry.
 
-The details, and why each one is needed, are in [Publishing](publishing.md).
+The details, and why each one is needed, are in [Publishing](publishing.md). When a site is retired, delete its `CNAME` first: see [When a site is retired](publishing.md#when-a-site-is-retired).
 
 ## Humans keep a few things
 
 - The README's link to the documentation.
 - Formatter and hook exclusions that cover `docs/`. A pre-commit hook that stamps a copyright comment above front matter should exclude `^docs/`: staging repairs the stamp for the site, but GitHub and Obsidian read the unrepaired file and then show the front matter as text.
+- A format check of the whole repository (oxfmt, prettier) over the new files. `init` writes them the way those tools print them and indents the JSON the way the repository's formatter configuration, `.editorconfig` or root `package.json` asks, but run the check once before the pull request, or ignore `docs-site` in the formatter's configuration. See [Hooks rewrite `docs/`](troubleshooting.md#hooks-rewrite-docs).

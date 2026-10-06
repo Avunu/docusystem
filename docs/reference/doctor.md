@@ -8,7 +8,7 @@ tags: [reference, doctor, checklist]
 
 `docusystem doctor` is the maintainer checklist as far as a clone of the repository shows it. It works offline: nothing touches the network. Each finding is `ok`, `warning` or `error`, and any error makes the exit code 1; warnings alone exit 0. `--json` prints the findings as JSON.
 
-After the checks it prints the GitHub and DNS values a maintainer still has to set, from the config: the Pages source, the custom domain, the DNS record, the repository variable `DOCS_SITE_ENABLED`, branch protection and the `docs:` line of the avunu.net catalog entry. Those need a person with access, so `doctor` cannot check them. See [Publishing](../guide/publishing.md#what-a-maintainer-sets-once).
+After the checks it prints the GitHub and DNS values a maintainer still has to set, from the config: the Pages source, the domain verification for the organization, the custom domain, the DNS record, the repository variable `DOCS_SITE_ENABLED`, branch protection and the `docs:` line of the avunu.net catalog entry, and what to delete when the site is retired. Those need a person with access, so `doctor` cannot check them. See [Publishing](../guide/publishing.md#what-a-maintainer-sets-once).
 
 Run it after `init`, after every upgrade, and when a Dependabot pull request for the docs site looks odd.
 
@@ -54,7 +54,8 @@ All warnings:
 - There is no npm entry for the site folder.
 - There is no `github-actions` entry.
 - An entry is for the wrong ecosystem for the lockfile.
-- A `github-actions` entry has a cooldown that does not exclude `Avunu/docusystem`.
+- The npm entry for the site folder has a cooldown that does not exclude `@avunu/docusystem`: a release of the package would wait for it. `init` adds the exclusion when it converts a `bun` entry, and prints the lines to add for an npm entry that was already there.
+- A `github-actions` entry has a cooldown that does not exclude `Avunu/docusystem`: a release of the shared workflows would wait for it.
 
 The file is parsed, not searched: an `npm /` entry followed by a `bun /docs-site` entry is not a match for an npm entry for the site folder.
 
@@ -62,7 +63,8 @@ The file is parsed, not searched: an `npm /` entry followed by a `bun /docs-site
 
 Errors:
 
-- An auto-merge workflow lacks an exclusion for exactly `dependabot/npm_and_yarn/<site folder>`. A `dependabot/bun/...` exclusion counts as missing, because the shell's lockfile makes Dependabot's ecosystem `npm`.
+- An auto-merge workflow lacks an exclusion for exactly `dependabot/npm_and_yarn/<site folder>`. A `dependabot/bun/...` exclusion counts as missing, because the shell's lockfile makes Dependabot's ecosystem `npm`. The message says that `docusystem init` fixes it only when `init` can patch that workflow; otherwise it says what to do by hand, with the finished `if:` line.
+- An auto-merge workflow lacks an exclusion for the `github-actions` pull requests (`!startsWith(github.head_ref, 'dependabot/github_actions/')`, or a negated `dependency-names` test of `Avunu/docusystem`): the pull request that moves the pin of the shared workflows would merge by itself, and a merge publishes the site with the new workflow code.
 
 ## Lockfile
 
@@ -90,6 +92,7 @@ An override that is `current` is reported as `ok`.
 All warnings:
 
 - A `.pre-commit-config.yaml` with a copyright hook (exclude `^docs/` from it).
-- Leftovers of the earlier starter in the site folder: `components/`, `layouts/`, `pages/`, `project.json` or `scripts/`.
+- Leftovers of the earlier starter in the site folder: `components/`, `layouts/`, `pages/`, `project.json`, `scripts/`, `data/`, `docs.config.json`, `README.md`, or a `public/` that holds files identical to the package's own (a `public/` of your own is not a leftover). One warning lists them.
+- A `package.json` in the site folder with a `postinstall` script or a `@jxsuite/*` dependency (a copy of the starter's), or with an `engines.bun` entry (the starter's, which needed Bun). They are separate warnings.
 
-Formatter configurations that would reformat `docs/` are only mentioned.
+Formatter configurations that would reformat `docs/`, or that also check the site folder and the caller workflows, are only mentioned (doctor does not run the formatter).

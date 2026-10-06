@@ -23,6 +23,7 @@ import {
   type StageOptions,
 } from "../../src/lib/stage.js";
 import type { DocsConfig } from "../../src/lib/types.js";
+import { INERT } from "../../src/lib/inert.js";
 import { makeTree, pathsIn, symlinksWork } from "./helpers.js";
 
 /** A repository: docs/ with a few pages, and files elsewhere that the docs link to. */
@@ -189,6 +190,179 @@ test("stageMarkdown rewrites links and images outside code, and reports each one
   expect(stageMarkdown("no links here\r\nsecond\r\n", "README.md", options).text).toBe(
     "no links here\r\nsecond\r\n",
   );
+});
+
+describe("raw HTML links (a README copied into docs/)", () => {
+  const RAW = "https://github.com/Avunu/app/raw/main";
+  const BLOB = "https://github.com/Avunu/app/blob/main";
+
+  test("a centred logo, anchors and a picture are repaired like Markdown, and each is reported", () => {
+    const { options } = repo();
+    const source = [
+      "# Home",
+      "",
+      '<p align="center"><img src="./assets/logo.png" alt="logo" width="100"></p>',
+      '<p align="center"><img src="docs/img/flow.png" alt="from the root, inside docs"></p>',
+      '<img src="img/flow.png" alt="already right">',
+      "",
+      '<div align="center">',
+      '  <a href="docs/chat.md">Chat</a> | <a href="LICENSE">License</a> | <a href="https://example.com/x">Site</a> | <a href="#top">Top</a>',
+      '  <a href="/docs/chat/">site-absolute</a> <a href="mailto:a@b.c">mail</a> <a href="missing.md">missing</a>',
+      "</div>",
+      "",
+      "<picture>",
+      '  <source media="(prefers-color-scheme: dark)" srcset="./assets/logo.png">',
+      '  <img alt="logo" src="./assets/logo.png">',
+      "</picture>",
+    ].join("\n");
+    const { text, links } = stageMarkdown(source, "README.md", options);
+    expect(text.split("\n")).toEqual([
+      "# Home",
+      "",
+      `<p align="center"><img src="${RAW}/assets/logo.png" alt="logo" width="100"></p>`,
+      '<p align="center"><img src="img/flow.png" alt="from the root, inside docs"></p>',
+      '<img src="img/flow.png" alt="already right">',
+      "",
+      '<div align="center">',
+      `  <a href="chat.md">Chat</a> | <a href="${BLOB}/LICENSE">License</a> | <a href="https://example.com/x">Site</a> | <a href="#top">Top</a>`,
+      '  <a href="/docs/chat/">site-absolute</a> <a href="mailto:a@b.c">mail</a> <a href="missing.md">missing</a>',
+      "</div>",
+      "",
+      "<picture>",
+      `  <source media="(prefers-color-scheme: dark)" srcset="${RAW}/assets/logo.png">`,
+      `  <img alt="logo" src="${RAW}/assets/logo.png">`,
+      "</picture>",
+    ]);
+    expect(links.map((l) => [l.file, l.line, l.from, l.to])).toEqual([
+      ["README.md", 3, "./assets/logo.png", `${RAW}/assets/logo.png`],
+      ["README.md", 4, "docs/img/flow.png", "img/flow.png"],
+      ["README.md", 8, "docs/chat.md", "chat.md"],
+      ["README.md", 8, "LICENSE", `${BLOB}/LICENSE`],
+      ["README.md", 13, "./assets/logo.png", `${RAW}/assets/logo.png`],
+      ["README.md", 14, "./assets/logo.png", `${RAW}/assets/logo.png`],
+    ]);
+    // Once repaired there is nothing left to repair.
+    expect(stageMarkdown(text, "README.md", options)).toMatchObject({ text, links: [] });
+  });
+
+  test("the same link gives the same address written in Markdown and in HTML", () => {
+    const { options } = repo();
+    const source = [
+      '<p align="center"><img src="./assets/logo.png" alt="logo" width="100"></p>',
+      "![x](./assets/logo.png)",
+    ].join("\n");
+    const { text } = stageMarkdown(source, "chat.md", options);
+    expect(text).toBe(
+      [
+        `<p align="center"><img src="${RAW}/assets/logo.png" alt="logo" width="100"></p>`,
+        `![x](${RAW}/assets/logo.png)`,
+      ].join("\n"),
+    );
+  });
+
+  test("single quotes, no quotes, any case, entities, and tags that span lines", () => {
+    const { options } = repo();
+    const source = [
+      "<IMG SRC='assets/logo.png?raw=true&amp;v=1' ALT=x>",
+      "<a href=LICENSE>x</a>",
+      "<img",
+      '  alt="two lines"',
+      '  src="assets/logo.png"',
+      "/>",
+    ].join("\n");
+    const { text, links } = stageMarkdown(source, "README.md", options);
+    expect(text.split("\n")).toEqual([
+      `<IMG SRC='${RAW}/assets/logo.png?raw=true&amp;v=1' ALT=x>`,
+      `<a href=${BLOB}/LICENSE>x</a>`,
+      "<img",
+      '  alt="two lines"',
+      `  src="${RAW}/assets/logo.png"`,
+      "/>",
+    ]);
+    expect(links.map((l) => [l.line, l.from])).toEqual([
+      [1, "assets/logo.png?raw=true&v=1"],
+      [2, "LICENSE"],
+      [5, "assets/logo.png"],
+    ]);
+  });
+
+  test("a srcset, a poster, and the src of a video or an audio element", () => {
+    const { options } = repo();
+    const source = [
+      '<img src="assets/logo.png" srcset="assets/logo.png 1x, docs/img/flow.png 2x,https://example.com/x.png 3x">',
+      '<video src="assets/logo.png" poster="docs/img/flow.png" controls></video>',
+      '<audio src="LICENSE"></audio>',
+    ].join("\n");
+    expect(stageMarkdown(source, "README.md", options).text.split("\n")).toEqual([
+      `<img src="${RAW}/assets/logo.png" srcset="${RAW}/assets/logo.png 1x, img/flow.png 2x,https://example.com/x.png 3x">`,
+      `<video src="${RAW}/assets/logo.png" poster="img/flow.png" controls></video>`,
+      `<audio src="${RAW}/LICENSE"></audio>`,
+    ]);
+  });
+
+  test("code, comments, tags that are not tags and attributes that are not links are left alone", () => {
+    const { options } = repo();
+    const source = [
+      "```html",
+      '<img src="assets/logo.png">',
+      "```",
+      'Inline `<a href="LICENSE">` code, and <!-- <img src="assets/logo.png"> --> a comment.',
+      "<!--",
+      '<a href="LICENSE">',
+      "-->",
+      '<img src="assets/logo.png"',
+      "",
+      "A paragraph, so the tag above never ended: > not a tag.",
+      '<iframe src="assets/logo.png"></iframe> <a name="LICENSE">x</a> <img alt="assets/logo.png">',
+      '<img src="assets/not-there.png"> <img src="/assets/logo.png"> <img src="">',
+    ].join("\n");
+    const staged = stageMarkdown(source, "README.md", options);
+    expect(staged.text).toBe(source);
+    expect(staged.links).toEqual([]);
+  });
+
+  test("line endings, and a file with no raw HTML, are not touched", () => {
+    const { options } = repo();
+    const crlf = '# A\r\n\r\n<img\r\n  src="assets/logo.png">\r\n';
+    expect(stageMarkdown(crlf, "README.md", options).text).toBe(
+      `# A\r\n\r\n<img\r\n  src="${RAW}/assets/logo.png">\r\n`,
+    );
+    const plain = "# A\n\nSome text with <b>bold</b> and a < sign.\n";
+    expect(stageMarkdown(plain, "README.md", options).text).toBe(plain);
+  });
+
+  test("Markdown and HTML links on one line are both rewritten, and the lines are counted from the top of the file", () => {
+    const { options } = repo();
+    const source =
+      '---\ntitle: T\n---\n\n[![l](assets/logo.png)](LICENSE) <img src="assets/logo.png"> [c](docs/chat.md)\n';
+    const { text, links } = stageMarkdown(source, "README.md", options);
+    expect(text).toBe(
+      `---\ntitle: T\n---\n\n[![l](${RAW}/assets/logo.png)](${BLOB}/LICENSE) <img src="${RAW}/assets/logo.png"> [c](chat.md)\n`,
+    );
+    expect(links.map((l) => [l.line, l.from])).toEqual([
+      [5, "assets/logo.png"],
+      [5, "LICENSE"],
+      [5, "docs/chat.md"],
+      [5, "assets/logo.png"],
+    ]);
+  });
+
+  test("stageDocs writes the repaired page, so Jx never sees the repository-relative addresses", () => {
+    const { options } = repo({
+      "docs/readme-copy.md":
+        '---\ntitle: Copy\n---\n\n<p align="center"><img src="./assets/logo.png" alt="logo"></p>\n\nSee <a href="docs/chat.md">chat</a>.\n',
+    });
+    const result = stageDocs(options);
+    expect(result.links.map((l) => [l.file, l.line, l.from, l.to])).toEqual([
+      ["readme-copy.md", 5, "./assets/logo.png", `${RAW}/assets/logo.png`],
+      ["readme-copy.md", 7, "docs/chat.md", "chat.md"],
+    ]);
+    expect(readFileSync(join(options.dest, "readme-copy.md"), "utf8")).toBe(
+      `---\ntitle: Copy\n---\n\n<p align="center"><img src="${RAW}/assets/logo.png" alt="logo"></p>\n\nSee <a href="chat.md">chat</a>.\n`,
+    );
+    // The staged tree is stable: staging it again writes nothing.
+    expect(stageDocs(options)).toMatchObject({ written: 0, removed: 0 });
+  });
 });
 
 test("moveLeadingComment is reachable from the staging module", () => {
@@ -463,4 +637,65 @@ test("stageSite takes the folders from the paths and the repository from the con
   const before = listTree(paths.stagedDocs);
   expect(stageSite(paths, config, "develop")).toMatchObject({ files: 2, written: 0, removed: 0 });
   expect(listTree(paths.stagedDocs)).toEqual(before);
+});
+
+test("stageMarkdown writes a `${` inert wherever Jx would evaluate it: a link, an autolink, a tag, a fence's language", () => {
+  const { options } = repo();
+  const source = [
+    "[a](https://example.com/${x})",
+    "",
+    "<https://example.com/${y}>",
+    "",
+    '<img src="${z}" alt="x">',
+    "",
+    "```${w}",
+    "code",
+    "```",
+    "",
+  ].join("\n");
+  const { text } = stageMarkdown(source, "README.md", options, new Map());
+  expect(text).not.toContain("${");
+  expect(text.split(INERT)).toHaveLength(5);
+});
+
+test("stageMarkdown writes it inert in code too, and in the frontmatter, in every spelling", () => {
+  const { options } = repo();
+  const source = [
+    "---",
+    'title: "T \\x24\\x7Bx}"',
+    "---",
+    "",
+    "Inline `${HOME}` and &#36;{HOME} and $\\{HOME}.",
+    "",
+    "```bash",
+    "echo ${HOME}",
+    "```",
+    "",
+  ].join("\n");
+  const { text } = stageMarkdown(source, "README.md", options, new Map());
+  expect(text).not.toContain("${");
+  expect(text).toContain(`title: "T ${INERT}x}"`);
+  expect(text).toContain(`Inline \`${INERT}HOME}\` and ${INERT}HOME} and ${INERT}HOME}.`);
+  expect(text).toContain(`echo ${INERT}HOME}`);
+});
+
+test("stageMarkdown leaves a page without `${` byte for byte, and staging twice changes nothing", () => {
+  const { options } = repo();
+  const plain = "# T\n\nPrice $5 and {braces} and `code`.\n";
+  expect(stageMarkdown(plain, "README.md", options, new Map()).text).toBe(plain);
+  const once = stageMarkdown("[a](https://example.com/${x}) `${y}`\n", "README.md", options).text;
+  expect(stageMarkdown(once, "README.md", options).text).toBe(once);
+});
+
+test("stageMarkdown still rewrites a link that sits next to a `${`: the two edits do not collide", () => {
+  const { options } = repo();
+  const { text, links } = stageMarkdown(
+    "[a](LICENSE) and [b](https://example.com/${x})\n",
+    "README.md",
+    options,
+    new Map(),
+  );
+  expect(links).toHaveLength(1);
+  expect(text).toContain("https://github.com/Avunu/app/blob/main/LICENSE");
+  expect(text).toContain(`https://example.com/${INERT}x}`);
 });

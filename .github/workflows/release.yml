@@ -61,9 +61,68 @@ jobs:
           branch="$(echo "$RELEASE_PR" | jq -r '.headBranchName')"
           gh workflow run ci.yml --ref "$branch"
 
+  # Everything that installs or runs the repository's toolchain (the test runner, the linter, the
+  # compiler: some 280 packages) lives in this job, and this job holds no `id-token`, no environment and
+  # no secret. A step of a job with `id-token: write` has ACTIONS_ID_TOKEN_REQUEST_URL and _TOKEN in its
+  # environment, and npm exchanges that token for a publish credential without asking what ran before,
+  # so a compromised development dependency in such a job could publish. Here it cannot. The job hands
+  # one tarball to `publish`, which runs none of this code.
+  build:
+    name: Build the release
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release-created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+          persist-credentials: false
+
+      # No registry-url: nothing here publishes, so no .npmrc is written. No cache: this job produces
+      # what users install.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install, check and build at the release commit
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm run build
+          npm run check:pack
+
+      # The same flags as check-pack.mjs: the tarball is the build that was just checked, not a new one.
+      - name: Pack the tarball
+        env:
+          DESTINATION: ${{ runner.temp }}/tarball
+        run: |
+          mkdir -p "$DESTINATION"
+          npm pack --ignore-scripts --pack-destination "$DESTINATION"
+
+      # download-artifact in `publish` verifies the digest recorded here.
+      - name: Hand the tarball to the publish job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-tarball
+          path: ${{ runner.temp }}/tarball/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0 # already a .tgz
+          overwrite: true # re-running all jobs of a run uploads again
+
+  # The only job with an OIDC token, and it runs no code of this repository or its dependencies: it
+  # downloads the tarball `build` made and publishes that file. `npm publish <tarball>` runs no
+  # lifecycle script (prepack and prepublishOnly belong to a directory publish), and nothing is
+  # installed, so nothing in this job is there to be compromised except npm, Node and the pinned actions.
   publish:
     name: Publish to npm
-    needs: release-please
+    needs: [release-please, build]
     if: ${{ needs.release-please.outputs.release-created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -71,14 +130,13 @@ jobs:
     # configuration on npmjs.com, so a run from any other branch cannot obtain a publish token.
     environment: npm
     permissions:
-      contents: read # checkout
       id-token: write # the OIDC token npm exchanges for a publish token, and the provenance signature
     steps:
-      - name: Check out the release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the tarball
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          ref: ${{ needs.release-please.outputs.sha }}
-          persist-credentials: false
+          name: package-tarball
+          path: ${{ runner.temp }}/tarball
 
       # Node 24 ships npm 11.19, above the 11.5.1 that trusted publishing needs; nothing is installed
       # over it. No cache: this job produces what users install.
@@ -89,29 +147,44 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
-      - name: Install, check and build at the release commit
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run check
-          npm run build
-          npm run check:pack
-
       - name: Publish (skipped when the version already exists)
         env:
+          PACKAGE: "@avunu/docusystem"
+          TARBALL_DIR: ${{ runner.temp }}/tarball
           VERSION: ${{ needs.release-please.outputs.version }}
           # Used only until the trusted publisher is configured on npmjs.com (MAINTAINING.md, first
           # release). Once it is, npm exchanges the OIDC token first and this is never read; a follow-up
           # pull request deletes this line, the secret and the token after the first tokenless release.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          name="$(node -p "require('./package.json').name")"
-          have="$(node -p "require('./package.json').version")"
+          set -- "$TARBALL_DIR"/*.tgz
+          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected exactly one tarball in $TARBALL_DIR, found: $*"
+            exit 1
+          fi
+          tarball="$1"
+          # What is published is what is in the tarball, so that is what is checked against the release.
+          manifest="$(tar -xzOf "$tarball" package/package.json)"
+          name="$(node -p 'JSON.parse(process.argv[1]).name' "$manifest")"
+          have="$(node -p 'JSON.parse(process.argv[1]).version' "$manifest")"
+          if [ "$name" != "$PACKAGE" ]; then
+            echo "::error::the tarball is $name, not $PACKAGE"
+            exit 1
+          fi
           if [ "$have" != "$VERSION" ]; then
-            echo "::error::package.json says $have but release-please released $VERSION"
+            echo "::error::the tarball is $name@$have but release-please released $VERSION"
             exit 1
           fi
           if npm view "$name@$VERSION" version > /dev/null 2>&1; then
             echo "$name@$VERSION is already on npm; nothing to publish"
           else
-            npm publish --provenance --access public
+            # When the OIDC exchange is refused (the trusted publisher on npmjs.com does not match this
+            # run, or does not allow a direct publish) or skipped (no id-token permission), npm only
+            # prints ENEEDAUTH, "log in". The registry's actual reason is a verbose-level line
+            # (`npm verbose oidc ...`), so this one command logs at verbose. That does not expose a
+            # secret: npm does not log the OIDC token or the exchanged token, and GitHub masks NPM_TOKEN.
+            if ! npm publish "$tarball" --provenance --access public --loglevel verbose; then
+              echo "::error title=npm publish failed::If the log says ENEEDAUTH, npm's OIDC token exchange was refused or skipped: the reason is the 'npm verbose oidc' line. Compare the trusted publisher on npmjs.com with this run (repository Avunu/docusystem, workflow release.yml, environment npm, permission publish; see MAINTAINING.md), then re-run the failed publish job."
+              exit 1
+            fi
           fi

@@ -7,6 +7,7 @@ import {
   emptyComponents,
   emptyLinks,
   formatAssertion,
+  titleHoldsMarkup,
 } from "../../src/lib/assert.js";
 import { tempDir } from "../support/index.js";
 import { copySite, drop, edit, put, swap, type Site } from "./helpers.js";
@@ -17,19 +18,23 @@ const A = {
   hollow: 1,
   links: 2,
   h1: 3,
-  stray: 4,
-  cname: 5,
-  fonts: 6,
-  faces: 7,
-  services: 8,
-  favicons: 9,
-  nojekyll: 10,
-  search: 11,
-  sitemap: 12,
-  notFound: 13,
-  copies: 14,
-  switcher: 15,
-  routes: 16,
+  title: 4,
+  stray: 5,
+  cname: 6,
+  fonts: 7,
+  faces: 8,
+  services: 9,
+  favicons: 10,
+  nojekyll: 11,
+  search: 12,
+  sitemap: 13,
+  notFound: 14,
+  copies: 15,
+  switcher: 16,
+  routes: 17,
+  runsCode: 18,
+  activeFiles: 19,
+  policy: 20,
 } as const;
 
 const DOMAIN = "docs.example.test";
@@ -44,13 +49,14 @@ const failing = (site: Site, routes: number | null = PAGES): number[] =>
 describe("the passing fixture", () => {
   test("passes every assertion, in the order of the record", () => {
     const results = run(copySite());
-    expect(results).toHaveLength(17);
+    expect(results).toHaveLength(21);
     expect(results.filter((a) => !a.ok)).toEqual([]);
     expect(results.map((a) => a.message)).toEqual([
       "3 components emitted as components/<tag>.js",
       "no page has an empty, un-rendered component",
       "no page has a link without text, image or aria-label",
       "every page has exactly one <h1>",
+      "every page's <title> is text only, with no markup after it",
       "no unevaluated ${state text on any page",
       "CNAME says docs.example.test",
       "1 self-hosted font file in fonts/",
@@ -64,12 +70,15 @@ describe("the passing fixture", () => {
       "no Markdown copies of pages (index.md beside index.html)",
       "the project switcher is pre-rendered from the catalog (1 project in 1 group)",
       "4 pages built (4 expected)",
+      "no page holds a script, an event handler, a javascript: address or an embedded page",
+      "every file published from the Markdown folder is a picture, a document or data, none runs",
+      "4 pages carry a Content-Security-Policy that blocks inline handlers, javascript: addresses and scripts the build did not write",
     ]);
   });
 
   test("a route count of null leaves the count unchecked and everything else as it was", () => {
     const results = run(copySite(), null);
-    expect(results).toHaveLength(17 - 1);
+    expect(results).toHaveLength(21 - 1);
     expect(results.every((a) => a.ok)).toBe(true);
   });
 
@@ -157,6 +166,41 @@ const CASES: Case[] = [
     change: (s) => edit(dist(s, "404.html"), (t) => swap(t, "<h1>Page not found</h1>", "")),
     fails: [A.h1],
     says: /\/404\.html \(0\)/,
+  },
+  {
+    name: "a title that holds </title> ended the element, and a script follows it in the head",
+    change: (s) =>
+      edit(guide(s), (t) =>
+        swap(
+          t,
+          /<title>[^<]*<\/title>/,
+          '<title>Evil </title><script>document.documentElement.setAttribute("x","1")</script> · Docs</title>',
+        ),
+      ),
+    // The forged script is also a script that the page's policy does not name: caught twice.
+    fails: [A.title, A.policy],
+    says: /the <title> ends early.*\/docs\/guide\//,
+  },
+  {
+    name: "a title that holds </title> and then </head> and a body is not taken for the end of the head",
+    change: (s) =>
+      edit(guide(s), (t) =>
+        swap(
+          t,
+          /<title>[^<]*<\/title>/,
+          "<title>Evil </title></head><body><img src=x onerror=alert(1)><title>y</title>",
+        ),
+      ),
+    // The forged event handler is also markup that runs code: caught twice.
+    fails: [A.title, A.runsCode],
+  },
+  {
+    name: "a title that closes the element in capitals, with a space or a slash",
+    change: (s) =>
+      edit(guide(s), (t) =>
+        swap(t, /<title>[^<]*<\/title>/, "<title>a</TITLE ><script>x</script></title/>"),
+      ),
+    fails: [A.title, A.policy],
   },
   {
     name: "a template expression reached the page unevaluated",
@@ -383,6 +427,65 @@ const CASES: Case[] = [
     fails: [A.routes],
     says: /4 pages built, 7 expected: Jx dropped 3 routes/,
   },
+  {
+    name: "raw HTML in the Markdown came out with an event handler",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, "<pre>", '<img src="x.png" onerror="alert(1)"><pre>')),
+    fails: [A.runsCode],
+    says: /\/docs\/guide\/ \(<img onerror="alert\(1\)">\)/,
+  },
+  {
+    name: "a link in the Markdown came out as a javascript: address",
+    change: (s) =>
+      edit(guide(s), (t) =>
+        swap(t, "<pre>", '<p><a href=" JaVa&#x09;Script:alert(1)">x</a></p><pre>'),
+      ),
+    fails: [A.runsCode],
+    says: /<a href="JaVa\s?Script:alert\(1\)">/i,
+  },
+  {
+    name: "a :script directive came out as a script in the page content",
+    change: (s) => edit(guide(s), (t) => swap(t, "<pre>", "<p><script>alert(1)</script></p><pre>")),
+    fails: [A.runsCode, A.policy],
+    says: /<script> in the page content/,
+  },
+  {
+    name: "an iframe stands in a page",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, "<pre>", '<iframe src="https://example.com/"></iframe><pre>')),
+    fails: [A.runsCode],
+    says: /<iframe>/,
+  },
+  {
+    name: "a script file is linked from the Markdown",
+    change: (s) => put(dist(s, "content/docs/guide/x.js"), "alert(1)"),
+    fails: [A.activeFiles],
+    says: /\/content\/docs\/guide\/x\.js \(a \.js file/,
+  },
+  {
+    name: "an SVG with an event handler is linked from the Markdown",
+    change: (s) =>
+      put(
+        dist(s, "content/docs/diagram.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><rect/></svg>',
+      ),
+    fails: [A.activeFiles],
+    says: /diagram\.svg \(onload="alert\(1\)"\)/,
+  },
+  {
+    name: "a page has no Content-Security-Policy",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, /<meta http-equiv="Content-Security-Policy"[^>]*>/, "")),
+    fails: [A.policy],
+    says: /\/docs\/guide\/ \(it has no Content-Security-Policy meta\)/,
+  },
+  {
+    name: "a page's Content-Security-Policy lets inline scripts run",
+    change: (s) =>
+      edit(guide(s), (t) => swap(t, "script-src 'self'", "script-src 'self' 'unsafe-inline'")),
+    fails: [A.policy],
+    says: /script-src allows 'unsafe-inline'/,
+  },
 ];
 
 describe("each assertion fails on a fixture that breaks it, and on that alone", () => {
@@ -508,6 +611,34 @@ describe("what the assertions accept", () => {
   });
 });
 
+describe("titleHoldsMarkup", () => {
+  const head = (title: string) => `<!DOCTYPE html><html><head>${title}<meta name="x"></head>`;
+
+  test("a title of text, escaped or not, is not markup", () => {
+    expect(titleHoldsMarkup(`${head("<title>Install · Docs</title>")}<body></body></html>`)).toBe(
+      false,
+    );
+    expect(titleHoldsMarkup(head("<title>Evil &lt;/title&gt;&lt;script&gt; · Docs</title>"))).toBe(
+      false,
+    );
+    expect(titleHoldsMarkup("<title>no head at all</title><h1>x</h1>")).toBe(false);
+    expect(titleHoldsMarkup("<p>no title</p>")).toBe(false);
+  });
+
+  test("a second </title> or <title> in the head is, wherever the title put the end of the head", () => {
+    expect(titleHoldsMarkup(head("<title>a</title><script>x</script></title>"))).toBe(true);
+    expect(titleHoldsMarkup(head("<title>a</title><title>b</title>"))).toBe(true);
+    expect(titleHoldsMarkup("<title>a</title></head><b><title>b</title></head></html>")).toBe(true);
+    expect(titleHoldsMarkup(head("<title>a</TITLE\n><i></title/>"))).toBe(true);
+  });
+
+  test("a <title> in the body, such as an SVG's, is not the page's title", () => {
+    expect(
+      titleHoldsMarkup(`${head("<title>T</title>")}<body><svg><title>icon</title></svg></body>`),
+    ).toBe(false);
+  });
+});
+
 describe("emptyComponents", () => {
   const tags = ["docs-header", "docs-icon"];
 
@@ -582,6 +713,44 @@ describe("emptyLinks", () => {
 
   test("an attribute value holding a > does not hide the link", () => {
     expect(emptyLinks('<a href="/x/?a>b"></a>')).toEqual(['<a href="/x/?a>b">']);
+  });
+});
+
+describe("a link failure names the Markdown file of the page", () => {
+  /** The message of the empty-link assertion, for a fixture whose guide page holds a raw anchor. */
+  const hollow = (sources?: Record<string, string>): string => {
+    const site = copySite();
+    edit(guide(site), (t) => swap(t, "<p>Back", "<p><a href></a>Raw anchor. Back"));
+    const results = assertBuild(site.root, site.dist, {
+      cname: DOMAIN,
+      routes: PAGES,
+      ...(sources === undefined ? {} : { sources }),
+    });
+    expect(results[A.links]!.ok).toBe(false);
+    return results[A.links]!.message;
+  };
+
+  // The message may go on after the entry (a hint about the usual cause), so each is matched at its start.
+  test("the route, then the file it was built from, then the tag", () => {
+    expect(hollow({ "/docs/": "docs/README.md", "/docs/guide/": "docs/guide/install.md" })).toMatch(
+      /^links with nothing inside: \/docs\/guide\/ from docs\/guide\/install\.md \(<a href>\)(?:\.|$)/,
+    );
+  });
+
+  test("a page the sources do not list, or no sources at all, is named by its route alone", () => {
+    for (const message of [hollow({ "/docs/": "docs/README.md" }), hollow()]) {
+      expect(message).toMatch(/^links with nothing inside: \/docs\/guide\/ \(<a href>\)(?:\.|$)/);
+    }
+  });
+
+  test("the sources change nothing for a site that passes", () => {
+    const site = copySite();
+    const results = assertBuild(site.root, site.dist, {
+      cname: DOMAIN,
+      routes: PAGES,
+      sources: { "/docs/guide/": "docs/guide/install.md" },
+    });
+    expect(results.filter((a) => !a.ok)).toEqual([]);
   });
 });
 

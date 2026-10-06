@@ -1,12 +1,13 @@
 // `docusystem init` (4.1.2): inference from `origin` and the catalog, where it runs, what it writes,
 // what it refuses, and that running it again changes nothing. The catalog and the config module are
 // the fakes of ./support/neighbours.ts until WP1 is merged; the release version is fixed to 0.1.0.
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { decide, runInit, type InitDeps } from "../../src/commands/init.js";
+import { decide, readExistingConfig, runInit, type InitDeps } from "../../src/commands/init.js";
 import { readBundledCatalog } from "../../src/lib/catalog.js";
-import { listTree, runCli, tempDir } from "../support/index.js";
+import { starterLeftovers } from "../../src/lib/preflight.js";
+import { listTree, REPO_ROOT, runCli, tempDir } from "../support/index.js";
 import { readFixture } from "./support/fixtures.js";
 import {
   copyPilotGithub,
@@ -328,6 +329,92 @@ describe("decide", () => {
       /docusystem.config.json is not valid JSON/,
     );
   });
+
+  describe("the earlier starter's docs.config.json", () => {
+    // What cloudflare-email-relay's pilot had: a name and a domain that are not the catalog's.
+    const legacy = {
+      name: "Cloudflare Email",
+      tagline: "Email without SMTP or IMAP.",
+      slug: "cloudflare-email-relay",
+      platform: "general",
+      repo: "https://github.com/Avunu/cloudflare-email-relay",
+      domain: "cloudflare-email.avunu.net",
+      license: "MIT",
+    };
+    const relay = (files: Record<string, string>) =>
+      makeRepo({ origin: "https://github.com/Avunu/cloudflare-email-relay.git", files });
+
+    test("is read when there is no docusystem.config.json: its name and its domain survive, silently", () => {
+      const root = relay({ "docs-site/docs.config.json": JSON.stringify(legacy) });
+      const { config, notes } = decide({
+        siteDir: siteOf(root),
+        repoRoot: root,
+        env: envFor(root),
+      });
+      expect(config).toEqual(legacy);
+      // nothing was inferred, so nothing is "chosen for you"
+      expect(notes).toEqual([]);
+      expect(readExistingConfig(siteOf(root))?.legacy).toBe(true);
+    });
+
+    test("the catalog would have said otherwise: this is what used to be lost", () => {
+      const root = relay({});
+      const { config } = decide({ siteDir: siteOf(root), repoRoot: root, env: envFor(root) });
+      expect(config.name).not.toBe(legacy.name);
+      expect(config.domain).toBe("cloudflare-email-relay.avunu.net");
+    });
+
+    test("docusystem.config.json wins when both exist", () => {
+      const root = relay({
+        "docs-site/docs.config.json": JSON.stringify(legacy),
+        "docs-site/docusystem.config.json": JSON.stringify({ ...legacy, domain: "new.avunu.net" }),
+      });
+      const { config } = decide({ siteDir: siteOf(root), repoRoot: root, env: envFor(root) });
+      expect(config.domain).toBe("new.avunu.net");
+      expect(readExistingConfig(siteOf(root))?.legacy).toBe(false);
+    });
+
+    test("an option still wins over it, and --domain changes the domain only", () => {
+      const root = relay({ "docs-site/docs.config.json": JSON.stringify(legacy) });
+      const { config } = decide({
+        siteDir: siteOf(root),
+        repoRoot: root,
+        env: envFor(root),
+        domain: "email.avunu.net",
+      });
+      expect(config).toEqual({ ...legacy, domain: "email.avunu.net" });
+    });
+
+    test("the template's placeholders are not values: they are inferred as if the file were not there", () => {
+      const root = relay({
+        "docs-site/docs.config.json": JSON.stringify({
+          name: "Project Name",
+          tagline: "One sentence that says what this project does and who it is for.",
+          slug: "project-name",
+          platform: "general",
+          repo: "https://github.com/Avunu/project-name",
+          domain: "project-name.avunu.net",
+          license: "MIT",
+        }),
+      });
+      const { config } = decide({ siteDir: siteOf(root), repoRoot: root, env: envFor(root) });
+      expect(config).toMatchObject({
+        slug: "cloudflare-email-relay",
+        repo: "https://github.com/Avunu/cloudflare-email-relay",
+        domain: "cloudflare-email-relay.avunu.net",
+        license: "MIT",
+      });
+      expect(config.name).not.toBe("Project Name");
+      expect(config.tagline).not.toContain("One sentence that says");
+    });
+
+    test("one that is not JSON is reported by its own name", () => {
+      const root = relay({ "docs-site/docs.config.json": "{ nope" });
+      expect(() => decide({ siteDir: siteOf(root), repoRoot: root, env: envFor(root) })).toThrow(
+        /docs\.config\.json is not valid JSON/,
+      );
+    });
+  });
 });
 
 describe("init: where it runs", () => {
@@ -356,6 +443,9 @@ describe("init: where it runs", () => {
     expect(out).toContain("Chosen for you (pass the option to change it):");
     expect(out).toContain("A maintainer still has to:");
     expect(out).toContain("CNAME frappe-nix -> avunu.github.io");
+    // the domain is verified for the organization, and the end of the site is covered
+    expect(out).toContain("Verify avunu.net once for the Avunu GitHub organization");
+    expect(out).toContain("when the site is retired or its domain changes");
     expect(out.trimEnd().split("\n").at(-1)).toBe(
       "Next: cd docs-site && npm install && npm run check",
     );
@@ -384,6 +474,19 @@ describe("init: where it runs", () => {
     expect(again.code).toBe(0);
     expect(again.out).toContain("init: nothing to do: the shell is in place");
     expect(Object.fromEntries(SHELL_FILES.map((f) => [f, readIn(root, f)]))).toEqual(first);
+  });
+
+  test("a second run keeps the indentation of the files it wrote before", async () => {
+    const root = makeRepo({ files: { ".oxfmtrc.json": '{ "useTabs": true }\n' } });
+    expect((await init(root)).code).toBe(0);
+    expect(readIn(root, "docs-site/docusystem.config.json")).toContain('{\n\t"$schema"');
+    // the repository changes its mind about its formatter: the files already there are not re-indented
+    writeFileSync(join(root, ".oxfmtrc.json"), '{ "tabWidth": 4 }\n');
+    const again = await init(root, {}, { deps: NEVER });
+    expect(again.code).toBe(0);
+    expect(again.out).toContain("init: nothing to do: the shell is in place");
+    expect(readIn(root, "docs-site/docusystem.config.json")).toContain('{\n\t"$schema"');
+    expect(readIn(root, "docs-site/package.json")).toContain('{\n\t"name"');
   });
 
   test("a second run after the pins moved to another release leaves the callers alone", async () => {
@@ -449,7 +552,7 @@ describe("init: where it runs", () => {
     ) as Record<string, unknown>;
     expect(config.docs).toBe("../../docs");
     expect(readIn(root, ".github/workflows/docs.yml")).toContain("site-directory: tools/docs-site");
-    expect(readIn(root, ".github/workflows/docs.yml")).toContain('"tools/docs-site/**"');
+    expect(readIn(root, ".github/workflows/docs.yml")).toContain("      - tools/docs-site/**\n");
     expect(readIn(root, ".github/dependabot.yml")).toContain("directory: /tools/docs-site");
     // inside it, without the option, init finds that it is in a site folder
     const again = await init(root, {}, { cwd: join(root, "tools/docs-site"), deps: NEVER });
@@ -481,7 +584,7 @@ describe("init: where it runs", () => {
       '"docs": "../documentation"',
     );
     expect(readIn(root, ".github/workflows/docs.yml")).toContain(
-      'paths: ["documentation/**", "docs-site/**"',
+      "paths:\n      - documentation/**\n      - docs-site/**\n      - .github/workflows/docs.yml\n",
     );
   });
 
@@ -709,6 +812,41 @@ describe("init: package.json", () => {
     });
   });
 
+  test("--force on the starter's package.json also drops its engines.bun, and keeps the rest of engines", async () => {
+    const starter = (engines: unknown) => ({
+      name: "x-docs",
+      scripts: { postinstall: "bun scripts/postinstall.ts" },
+      dependencies: { "@jxsuite/compiler": "^5.0.0" },
+      engines,
+    });
+    const only = withPackage(starter({ bun: ">=1.4.0" }));
+    const forced = await init(only, { force: true });
+    expect(forced.code).toBe(0);
+    expect(packageOf(only)).not.toHaveProperty("engines");
+    expect(forced.out).toContain(
+      "rewrote the starter's dependencies and scripts; removed engines.bun",
+    );
+
+    const both = withPackage(starter({ bun: ">=1.4.0", node: ">=22" }));
+    await init(both, { force: true });
+    expect(packageOf(both).engines).toEqual({ node: ">=22" });
+  });
+
+  test("an engines.bun in a package.json that is otherwise not the starter's is kept, and said", async () => {
+    const root = withPackage({ name: "mine", engines: { bun: ">=1.4.0" } });
+    const { out } = await init(root, { force: true });
+    expect(packageOf(root).engines).toEqual({ bun: ">=1.4.0" });
+    expect(out).toContain('kept your "engines.bun" entry');
+  });
+
+  test("a refusal points at the migration guide", async () => {
+    const root = withPackage({ name: "x", scripts: { postinstall: "bun scripts/postinstall.ts" } });
+    const { err } = await init(root);
+    expect(err).toContain(
+      "https://github.com/Avunu/docusystem/blob/main/docs/guide/migrating-from-the-starter.md",
+    );
+  });
+
   test("a Jx dependency alone is enough to be refused", async () => {
     const root = withPackage({ name: "x", devDependencies: { "@jxsuite/runtime": "^4.0.0" } });
     expect((await init(root)).code).toBe(1);
@@ -858,6 +996,43 @@ describe("init: Dependabot and the auto-merge workflow", () => {
     expect((await init(root, {}, { deps: NEVER })).out).toContain("nothing to do");
   });
 
+  test("a cooldown that holds the package or the shared workflows back is reported, not edited", async () => {
+    const original = [
+      "version: 2",
+      "updates:",
+      "  - package-ecosystem: npm",
+      "    directory: /docs-site",
+      "    cooldown:",
+      "      default-days: 7",
+      "  - package-ecosystem: github-actions",
+      "    directory: /",
+      "    cooldown:",
+      "      default-days: 7",
+      "",
+    ].join("\n");
+    const root = makeRepo({ files: { ".github/dependabot.yml": original } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    expect(readIn(root, ".github/dependabot.yml")).toBe(original);
+    expect(out).toContain("Not done, for you to do by hand:");
+    expect(out).toContain(
+      '.github/dependabot.yml: the npm entry for /docs-site has a cooldown that does not exclude "@avunu/docusystem", so a release of the package would wait for it; add this under its cooldown:\n    exclude:\n      - "@avunu/docusystem"',
+    );
+    expect(out).toContain(
+      ".github/dependabot.yml: the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
+    );
+    // the same advice stays on a second run, because nothing was done about it
+    expect((await init(root, {}, { deps: NEVER })).out).toContain("cooldown that does not exclude");
+  });
+
+  test("without the workflows there is nothing to say about the github-actions entry", async () => {
+    const original =
+      "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    cooldown:\n      default-days: 7\n";
+    const root = makeRepo({ files: { ".github/dependabot.yml": original } });
+    const { out } = await init(root, { noWorkflow: true });
+    expect(out).not.toContain("cooldown");
+  });
+
   test("--no-dependabot", async () => {
     const root = makeRepo();
     await init(root, { noDependabot: true });
@@ -880,24 +1055,92 @@ jobs:
     const { out } = await init(root);
     const text = readIn(root, ".github/workflows/dependabot-auto-merge.yml") ?? "";
     expect(text).toContain(
-      "&& !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
+      "&& !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
     );
-    expect(text).toContain(
-      "# The documentation site's package updates (docs-site/) are reviewed by a person",
-    );
-    expect(out).toContain("docs-site updates now wait for a person");
+    expect(text).toContain("# Updates of the documentation site's packages (docs-site/) and of");
+    expect(out).toContain("docs-site updates and the shared workflows' pin now wait for a person");
   });
 
-  test("another shape is left alone and the line to add is printed", async () => {
-    const odd = automerge.replace(
+  test("an auto-merge workflow that skips the site's branches but not the github-actions ones gets that clause", async () => {
+    const before = automerge.replace(
       "github.actor == 'dependabot[bot]'",
-      "github.actor == 'dependabot[bot]' && always()",
+      "github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')",
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": before } });
+    const { out } = await init(root);
+    expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(
+      before.replace("}}", "&& !startsWith(github.head_ref, 'dependabot/github_actions/') }}"),
+    );
+    expect(out).toContain("the shared workflows' pin now wait for a person");
+  });
+
+  test("the pull request author's condition, the form zizmor recommends, gets the exclusion too", async () => {
+    const author = automerge.replace(
+      "github.actor == 'dependabot[bot]'",
+      "github.event.pull_request.user.login == 'dependabot[bot]'",
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": author } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toContain(
+      "if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
+    );
+    expect(out).toContain("docs-site updates and the shared workflows' pin now wait for a person");
+    expect(out).not.toContain("dependabot-auto-merge.yml:"); // nothing left to do by hand for it
+  });
+
+  test("a folded multi-line condition gets the exclusion as a new first line", async () => {
+    const folded = automerge.replace(
+      "if: ${{ github.actor == 'dependabot[bot]' }}",
+      [
+        "if: >-",
+        "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+        "      github.repository == 'Avunu/frappe-nix'",
+      ].join("\n"),
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": folded } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    const text = readIn(root, ".github/workflows/dependabot-auto-merge.yml") ?? "";
+    expect(text).toContain(
+      [
+        "    if: >-",
+        "      !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') &&",
+        "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+        "      github.repository == 'Avunu/frappe-nix'",
+      ].join("\n"),
+    );
+    expect(out).not.toContain("dependabot-auto-merge.yml:"); // nothing left to do by hand for it
+  });
+
+  test("a shape it cannot patch is left alone, and the condition and the finished line are printed", async () => {
+    const odd = automerge.replace(
+      "if: ${{ github.actor == 'dependabot[bot]' }}",
+      `if: "github.actor == 'dependabot[bot]' && always()"`,
     );
     const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": odd } });
     const { code, out } = await init(root);
     expect(code).toBe(0);
     expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(odd);
-    expect(out).toContain("!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')");
+    expect(out).toContain("Not done, for you to do by hand:");
+    expect(out).toContain("line 6: `github.actor == 'dependabot[bot]' && always()`");
+    expect(out).toContain(
+      "`if: ${{ github.actor == 'dependabot[bot]' && always() && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}`",
+    );
+  });
+
+  test("a bun exclusion that cannot take the github-actions clause is still converted, and the clause is printed", async () => {
+    const odd = automerge.replace(
+      "github.actor == 'dependabot[bot]'",
+      "github.actor == 'dependabot[bot]' && !contains(github.head_ref, 'dependabot/bun/docs-site')",
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": odd } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(
+      odd.replace("dependabot/bun/docs-site", "dependabot/npm_and_yarn/docs-site"),
+    );
+    expect(out).toContain("!startsWith(github.head_ref, 'dependabot/github_actions/')");
   });
 
   test("--no-patch-automerge", async () => {
@@ -908,7 +1151,7 @@ jobs:
 });
 
 describe.each(PILOTS)("init in a copy of %s's .github", (pilot) => {
-  test("converts the bun entry and exclusion by one line each, and refuses the starter's workflow until --force", async () => {
+  test("converts the bun entry and exclusion, keeps the package out of the cooldown, and refuses the starter's workflow until --force", async () => {
     const root = makeRepo({
       origin: `https://github.com/Avunu/${pilot}.git`,
       files: { ".github/workflows/docs.yml": readFixture("starter-docs.yml") },
@@ -927,15 +1170,163 @@ describe.each(PILOTS)("init in a copy of %s's .github", (pilot) => {
       return after.split("\n").flatMap((line, i) => (line === b[i] ? [] : [[b[i] ?? "", line]]));
     };
     const changedDependabot = readIn(root, ".github/dependabot.yml") ?? "";
-    expect(changedDependabot.split("\n")).toHaveLength(dependabot.split("\n").length);
-    expect(diff(dependabot, changedDependabot)).toEqual([
-      ["  - package-ecosystem: bun", "  - package-ecosystem: npm"],
-    ]);
+    // the entry's ecosystem line, its comment if that named Bun, and two new lines in its cooldown
+    expect(changedDependabot.split("\n")).toHaveLength(dependabot.split("\n").length + 2);
+    expect(changedDependabot).toContain(
+      '    cooldown:\n      default-days: 7\n      exclude:\n        - "@avunu/docusystem"\n',
+    );
+    expect(changedDependabot).not.toMatch(/\bBun\b/);
+    expect(changedDependabot).not.toContain("package-ecosystem: bun");
+    expect(diff(dependabot, changedDependabot)[0]?.[0] ?? "").toMatch(
+      /^ {2}#|^ {2}- package-ecosystem: bun$/,
+    );
     const changedMerge = readIn(root, ".github/workflows/dependabot-auto-merge.yml") ?? "";
-    expect(diff(merge, changedMerge)).toHaveLength(1);
+    expect(diff(merge, changedMerge)).toHaveLength(2);
     expect(changedMerge).toContain("dependabot/npm_and_yarn/docs-site");
     expect(changedMerge).not.toContain("dependabot/bun/");
+    expect(changedMerge).not.toContain("gated by a repository variable");
     expect(out).toContain("converted the bun entry for /docs-site to npm");
+    expect(out).toContain("excluded @avunu/docusystem from the cooldown of the npm entry");
+    // what init cannot do for the person it says: erpnext_taskview's github-actions entry has a cooldown
+    expect(
+      out.includes(
+        "the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
+      ),
+    ).toBe(pilot === "erpnext_taskview");
+    expect(out).not.toContain('does not exclude "@avunu/docusystem"');
+  });
+});
+
+describe("init: a repository that copied the earlier starter", () => {
+  const publicOf = (rel: string): string =>
+    readFileSync(join(REPO_ROOT, "site", "public", rel), "utf8");
+  /** A pilot's docs-site as the starter left it (the shape of cloudflare-email-relay's). */
+  const starterSite: Record<string, string> = {
+    "docs-site/docs.config.json": JSON.stringify({
+      name: "Cloudflare Email",
+      tagline: "Email without SMTP or IMAP.",
+      slug: "cloudflare-email-relay",
+      platform: "general",
+      repo: "https://github.com/Avunu/cloudflare-email-relay",
+      domain: "cloudflare-email.avunu.net",
+      license: "MIT",
+    }),
+    "docs-site/package.json": JSON.stringify({
+      name: "cloudflare-email-relay-docs",
+      private: true,
+      type: "module",
+      scripts: { postinstall: "bun scripts/postinstall.ts", dev: "bun scripts/dev.ts" },
+      dependencies: { "@jxsuite/compiler": "^5.0.0" },
+      devDependencies: { "@jxsuite/server": "^4.4.3" },
+      engines: { bun: ">=1.4.0" },
+    }),
+    "docs-site/bun.lock": "{}\n",
+    "docs-site/README.md": "# Documentation site\n",
+    "docs-site/project.json": "{}",
+    "docs-site/components/docs-footer.json": "{}",
+    "docs-site/layouts/base.json": "{}",
+    "docs-site/pages/index.json": "{}",
+    "docs-site/scripts/build.ts": "",
+    "docs-site/data/projects.snapshot.json": "{}",
+    "docs-site/public/CNAME": "cloudflare-email.avunu.net\n",
+    "docs-site/public/favicon.svg": publicOf("favicon.svg"),
+    "docs-site/public/fonts/LICENSE-Figtree.txt": publicOf("fonts/LICENSE-Figtree.txt"),
+    ".github/workflows/docs.yml": readFixture("starter-docs.yml"),
+    "docs/README.md": "# Home\n",
+  };
+  const relay = (): string =>
+    makeRepo({
+      origin: "https://github.com/Avunu/cloudflare-email-relay.git",
+      files: starterSite,
+    });
+  const configOf = (root: string): Record<string, unknown> =>
+    JSON.parse(readIn(root, "docs-site/docusystem.config.json") ?? "{}") as Record<string, unknown>;
+
+  test("init --force keeps the name and the domain of the old configuration, and says so", async () => {
+    const root = relay();
+    const { code, out } = await init(root, { force: true });
+    expect(code).toBe(0);
+    expect(configOf(root)).toMatchObject({
+      name: "Cloudflare Email",
+      domain: "cloudflare-email.avunu.net",
+      slug: "cloudflare-email-relay",
+    });
+    expect(out).toContain(
+      "docs-site/docusystem.config.json  (the values of the starter's docs-site/docs.config.json, domain included)",
+    );
+    // nothing was inferred: the old values were kept, so there is no "chosen for you" list
+    expect(out).not.toContain("Chosen for you");
+    expect(out).toContain("A maintainer still has to:");
+    expect(out).toContain("Custom domain: cloudflare-email.avunu.net");
+  });
+
+  test("it lists every leftover with the fix, names the guide, and deletes none of them", async () => {
+    const root = relay();
+    const before = worktree(root).filter((entry) => entry.startsWith("docs-site/"));
+    const { out } = await init(root, { force: true });
+    const [, section = ""] = out.split("Left over from the earlier starter");
+    expect(section).toContain(
+      "https://github.com/Avunu/docusystem/blob/main/docs/guide/migrating-from-the-starter.md",
+    );
+    for (const entry of [
+      "components/",
+      "layouts/",
+      "pages/",
+      "project.json",
+      "scripts/",
+      "data/",
+      "docs.config.json",
+      "README.md",
+      "public/",
+      "bun.lock",
+    ]) {
+      expect(section, entry).toContain(`  docs-site/${entry}  `);
+    }
+    expect(section).toContain("public/CNAME is not allowed either");
+    // init writes only what it owns: every starter file is still there
+    const after = worktree(root);
+    for (const entry of before) expect(after).toContain(entry);
+    expect(readIn(root, "docs-site/bun.lock")).toBe("{}\n");
+  });
+
+  test("a dry run says the same and writes nothing", async () => {
+    const root = relay();
+    const before = worktree(root);
+    const { out } = await init(root, { force: true, dryRun: true });
+    expect(out).toContain("Left over from the earlier starter");
+    expect(out).toContain("docs-site/public/  Delete the folder");
+    expect(worktree(root)).toEqual(before);
+  });
+
+  test("after the leftovers are deleted as the guide says, nothing is left over and init has nothing to do", async () => {
+    const root = relay();
+    expect((await init(root, { force: true })).code).toBe(0);
+    for (const entry of [
+      "components",
+      "layouts",
+      "pages",
+      "scripts",
+      "data",
+      "public",
+      "project.json",
+      "README.md",
+      "docs.config.json",
+      "bun.lock",
+    ]) {
+      rmSync(join(root, "docs-site", entry), { recursive: true, force: true });
+    }
+    expect(starterLeftovers(join(root, "docs-site"))).toEqual([]);
+    const again = await init(root);
+    expect(again.code).toBe(0);
+    expect(again.out).toContain("init: nothing to do: the shell is in place");
+    expect(again.out).not.toContain("Left over from the earlier starter");
+    // and the domain is still the one the site was published under
+    expect(configOf(root).domain).toBe("cloudflare-email.avunu.net");
+  });
+
+  test("a repository that never copied the starter prints no such section", async () => {
+    const root = makeRepo();
+    expect((await init(root)).out).not.toContain("Left over from the earlier starter");
   });
 });
 

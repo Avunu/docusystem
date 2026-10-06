@@ -199,6 +199,49 @@ describe("runPostbuild", () => {
     ).toEqual([`${SITE}/docs/a/b/`, `${SITE}/docs/a/`, `${SITE}/docs/`, `${SITE}/`]);
   });
 
+  test("the marker that staging wrote for a `${` is text again in the page body and stays in attribute values", () => {
+    const marker = `$${String.fromCodePoint(0x200b)}{`;
+    const dist = writeTree(tempDir(), {
+      "index.html": page("", "/"),
+      "docs/a/index.html": page(
+        `<p>Set <code>${marker}HOME}</code> and <a href="https://e.org/${marker}x}">link</a>.</p>`,
+      ),
+    });
+    runPostbuild(dist, config(), navOf({}), noRepo());
+    const body = readFileSync(join(dist, "docs/a/index.html"), "utf8");
+    expect(body).toContain("<code>&#36;{HOME}</code>");
+    expect(body).toContain(`href="https://e.org/${marker}x}"`);
+  });
+
+  test("the title, the meta tags and the search index get the plain `${` back: nothing evaluates them", () => {
+    const marker = `$${String.fromCodePoint(0x200b)}{`;
+    const dist = writeTree(tempDir(), {
+      "index.html": page("", "/"),
+      "docs/a/index.html": `<!doctype html><html><head><title>Set ${marker}HOME} safely</title><meta name="description" content="Use ${marker}HOME}"></head><body><p>x</p></body></html>`,
+      "search-index.json": JSON.stringify({
+        documents: [
+          {
+            url: "/docs/a/",
+            title: "a",
+            text: `Use ${marker}HOME} and $ ${String.fromCodePoint(0x200b)}{PORT}`,
+          },
+        ],
+      }),
+    });
+    runPostbuild(
+      dist,
+      config(),
+      navOf({ "/docs/a/": info(`Set ${marker}HOME} safely`, "a.md") }),
+      noRepo(),
+    );
+    const html = readFileSync(join(dist, "docs/a/index.html"), "utf8");
+    expect(html).toContain("<title>Set ${HOME} safely</title>");
+    expect(html).toContain('name="description" content="Use ${HOME}"');
+    const index = JSON.parse(readFileSync(join(dist, "search-index.json"), "utf8"));
+    expect(index.documents[0].title).toBe("Set ${HOME} safely");
+    expect(index.documents[0].text).toBe("Use ${HOME} and $ {PORT}");
+  });
+
   test("an existing 404.html is kept as it is and counts as published", () => {
     const dist = writeTree(tempDir(), {
       "index.html": page("", "/"),
@@ -394,6 +437,12 @@ test("the text of <title> is escaped, entities that are already there are kept",
     "<title>Tom &amp; Jerry &#38; &copy;</title><p>a < b</p>",
   );
   expect(escapeTitle("<p>no title</p>")).toBe("<p>no title</p>");
+});
+
+test("a title that pages/[...path].json already escaped is left as it is", () => {
+  const escaped =
+    "<title>Evil &lt;/title&gt;&lt;script&gt;x&lt;/script&gt; &amp; Co · Docs</title>";
+  expect(escapeTitle(escaped)).toBe(escaped);
 });
 
 test("code blocks in a language the build cannot highlight are reported once each", () => {

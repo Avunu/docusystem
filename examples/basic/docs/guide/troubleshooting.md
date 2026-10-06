@@ -1,7 +1,5 @@
 <!-- Copyright (c) 2026 Avunu LLC -->
-
 ---
-
 title: Troubleshooting
 description: What to do when a check fails.
 order: 6

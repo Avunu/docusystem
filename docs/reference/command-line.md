@@ -76,10 +76,11 @@ Writes the shell of a docs site. Run it at the repository root or inside the sit
 
 What it does, in order:
 
-1. **Infers** the repository from the `origin` remote, the catalog entry whose `repo` matches (an error asking for `--slug` when several match), then `slug`, `name`, `tagline`, `platform` (else `general`), `license` and `domain`. A value it cannot infer is an error naming the option. Everything inferred is printed under "chosen for you". Existing config values win over inference, so running again never resets a tagline.
-2. **Writes** the config; `package.json` when absent (when present it only adds the dependency and the three scripts, and exits 1 without `--force` if the file has a `postinstall` script or depends on any `@jxsuite/*` package; `--force` rewrites `dependencies` to the single package); the `.gitignore` lines; the two caller workflows, with the commit of the tag `v<installed version>` found by `git ls-remote https://github.com/Avunu/docusystem` (the peeled `^{}` line is preferred); the Dependabot entries; and the auto-merge patch.
+1. **Infers** the repository from the `origin` remote, the catalog entry whose `repo` matches (an error asking for `--slug` when several match), then `slug`, `name`, `tagline`, `platform` (else `general`), `license` and `domain`. A value it cannot infer is an error naming the option. Everything inferred is printed under "chosen for you". Existing config values win over inference, so running again never resets a tagline. When there is no `docusystem.config.json` but there is the earlier starter's `docs.config.json`, its values are read instead (the template's placeholder values are ignored), so the domain of a published site is kept; the new file is listed with a note that says so.
+2. **Writes** the config, indented the way the repository's formatter wants JSON (`useTabs` or `tabWidth` in `.oxfmtrc.json` or `.prettierrc`, else `.editorconfig`, else the root `package.json`, else two spaces; an existing file keeps its own); `package.json` when absent (when present it only adds the dependency and the three scripts, and exits 1 without `--force` if the file has a `postinstall` script or depends on any `@jxsuite/*` package; `--force` rewrites `dependencies` to the single package, the scripts to the three, and removes `engines.bun`); the `.gitignore` lines; the two caller workflows, with the commit of the tag `v<installed version>` found by `git ls-remote https://github.com/Avunu/docusystem` (the peeled `^{}` line is preferred); the Dependabot entries; and the auto-merge patch.
 3. **Refuses** to overwrite an existing workflow that differs from its scaffold unless `--force`. If the commit cannot be resolved (offline, tag missing) it exits 1 and names `--workflow-sha`; it never falls back to a tag.
-4. **Prints** "A maintainer still has to:" followed by the settings in [Publishing](../guide/publishing.md), and "Next: cd docs-site && npm install && npm run check".
+4. **Lists** what the earlier starter left in the site folder (`components/`, `layouts/`, `pages/`, `project.json`, `scripts/`, `data/`, `docs.config.json`, `README.md`, a `public/` of the package's own files, `bun.lock`) with what to do about each. `init` deletes nothing it did not write. See [Migrating from the earlier starter](../guide/migrating-from-the-starter.md).
+5. **Prints** "A maintainer still has to:" followed by the settings in [Publishing](../guide/publishing.md), and "Next: cd docs-site && npm install && npm run check".
 
 Exit codes: 0 wrote, or nothing to do; 1 cannot decide a value, refused to overwrite, or could not resolve the workflow commit; 2 usage.
 
@@ -167,7 +168,9 @@ Copies package files into `<site>/overrides/` and records each in `overrides/.ej
 docusystem jx <jx arguments...>
 ```
 
-Assembles the project root (pipeline steps 1 to 8, never builds), then runs the pinned Jx CLI as `jx <arguments> <root>`, for example `docusystem jx validate`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. The exit code is Jx's. It is a debugging aid: `jx dev` and Jx Studio are not supported.
+Assembles the project root (pipeline steps 1 to 8; docusystem itself builds nothing), then runs the pinned Jx CLI as `jx <arguments> <root>`, for example `docusystem jx build --verbose`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. The exit code is Jx's. It is a debugging aid: `jx dev` and Jx Studio are not supported.
+
+The root is assembled from empty on every run, so a file that Jx writes into it (such as the `project.schema.json` of `jx schema`) lasts only until the next docusystem command. `jx build` writes to `<root>/dist`, not to `<site>/dist`, and skips the post-build steps. `jx validate` does not work on the generated root, and prints a note saying why; see [Looking inside a build](../guide/troubleshooting.md#looking-inside-a-build).
 
 ## Exit codes
 
@@ -207,6 +210,8 @@ strict = !lenient && (--strict || CI=true)
 - **Never downgraded:** config errors, a failing `jx`, failed output assertions and the contrast gate.
 
 Leniency is a per-run flag for the first pass, not a file setting, and the reusable workflows expose no lenient input.
+
+A lenient build (the default outside CI, and what `dev` always runs) can therefore print warnings and still fail: the output assertions run after the build and nothing relaxes them. A failure about a page names the page and the Markdown file it was built from, and the closing lines say that leniency does not reach it. The usual case is a raw HTML `<a href>` in Markdown: lint reports it with `file:line`, Jx writes an empty link, and the assertion "no page has an empty link" fails every build. The earlier starter published such a link without a word, so a repository that moves from the starter can meet this on its first build. Write `[text](url)`; `docusystem lint` lists the places.
 
 ## Output conventions
 

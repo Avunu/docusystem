@@ -148,6 +148,27 @@ describe("a clean build", () => {
     );
   });
 
+  test("counts the jx setting among the overrides, alone or beside overridden files", async () => {
+    const jx = { $head: [{ tagName: "meta", attributes: { name: "author", content: "Avunu" } }] };
+    const alone = makeWorld({ config: { jx } });
+    const { out } = await run(alone);
+    expect(out).toContain(
+      'build: overrides: the "jx" setting of docusystem.config.json (merged into project.json)',
+    );
+    expect(out).not.toContain("build: overrides: none (every file comes from the package)");
+
+    const both = makeWorld({ config: { jx } });
+    both.added = ["pages/about.json"];
+    expect((await run(both)).out).toContain(
+      'build: overrides: pages/about.json (added), the "jx" setting of docusystem.config.json (merged into project.json)',
+    );
+  });
+
+  test("an empty jx setting changes nothing and is not an override", async () => {
+    const { out } = await run(makeWorld({ config: { jx: {} } }));
+    expect(out).toContain("build: overrides: none (every file comes from the package)");
+  });
+
   test("passes the strictness, the branch and the catalog options on", async () => {
     const world = makeWorld();
     await run(world, {
@@ -161,7 +182,19 @@ describe("a clean build", () => {
     expect(args?.catalogUrl).toBe("http://127.0.0.1:1/projects.json");
     expect(args?.branch).toBe("main");
     expect(world.seen.postbuild[0]?.config.branch).toBe("main");
-    expect(world.seen.assertions).toEqual([{ cname: "example.avunu.net", routes: 6 }]);
+    expect(world.seen.assertions).toEqual([
+      {
+        cname: "example.avunu.net",
+        routes: 6,
+        // each page of the nav with the Markdown file it was built from, as lint prints it
+        sources: {
+          "/docs/": "docs/README.md",
+          "/docs/page-1/": "docs/page-1.md",
+          "/docs/page-2/": "docs/page-2.md",
+          "/docs/page-3/": "docs/page-3.md",
+        },
+      },
+    ]);
   });
 
   test("does not ask the catalog for a refresh unless it is asked", async () => {
@@ -520,8 +553,100 @@ describe("output assertions", () => {
       expect(distFiles(world)["index.html"]).toBe(before["index.html"]);
       expect(out).toContain("assert: ok: one h1 per page");
       expect(err).toContain("assert: FAIL: CNAME is example.org, not example.avunu.net");
-      expect(err.at(-1)).toBe("docusystem: 2 output assertion(s) failed. Nothing was published.");
+      expect(err).toContain("docusystem: 2 output assertion(s) failed. Nothing was published.");
     }
+  });
+
+  const LENIENT_ONLY = "a lenient build (the default outside CI, and always `docusystem dev`)";
+  const LINT_CAUSE = "If a lint warning above is about the page an assertion names";
+  const rawAnchor = (): World["lint"] => [
+    {
+      file: "page-1.md",
+      line: 5,
+      level: "warning",
+      rule: "html-inline",
+      message: "An inline <a href> keeps its text but loses the link.",
+    },
+  ];
+  const emptyLink = (): World["assertions"] => [
+    {
+      ok: false,
+      message: "links with nothing inside: /docs/page-1/ from docs/page-1.md (<a href>)",
+    },
+  ];
+
+  test("a lenient build says that leniency does not reach the assertion, and where the cause is", async () => {
+    const world = makeWorld();
+    world.lint = rawAnchor();
+    world.assertions = emptyLink();
+    const { result, err } = await run(world, { lenient: true });
+    expect(result.ok).toBe(false);
+    // the lint warning with its file and line, then the failure naming the same file, then why it still fails
+    expect(err).toContain(
+      "lint: warning: docs/page-1.md:5  An inline <a href> keeps its text but loses the link.",
+    );
+    expect(err).toContain(
+      "assert: FAIL: links with nothing inside: /docs/page-1/ from docs/page-1.md (<a href>)",
+    );
+    expect(err.slice(-2)).toEqual([
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+      expect.stringContaining(LENIENT_ONLY),
+    ]);
+    expect(err.at(-1)).toContain("output assertions fail every build");
+    expect(err.at(-1)).toContain(LINT_CAUSE);
+  });
+
+  test("a lenient build without lint output says only that leniency does not reach the assertion", async () => {
+    const world = makeWorld();
+    world.assertions = [{ ok: false, message: "CNAME is missing" }];
+    const { err } = await run(world, { lenient: true });
+    expect(err.slice(-2)).toEqual([
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+      expect.stringContaining("output assertions fail every build."),
+    ]);
+    expect(err.at(-1)).not.toContain(LINT_CAUSE);
+  });
+
+  test("a strict build keeps the one line, and adds the pointer to the lint line only when lint printed something", async () => {
+    const bare = makeWorld();
+    bare.assertions = [{ ok: false, message: "CNAME is missing" }];
+    const plain = await run(bare, { strict: true });
+    expect(plain.err.at(-1)).toBe(
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+    );
+    expect(plain.err.some((line) => line.includes("lenient"))).toBe(false);
+
+    const world = makeWorld();
+    world.lint = rawAnchor();
+    world.assertions = emptyLink();
+    const { err } = await run(world, { strict: true });
+    expect(err.slice(-2)).toEqual([
+      "docusystem: 1 output assertion(s) failed. Nothing was published.",
+      `docusystem: ${LINT_CAUSE}, that warning is the cause: fix it.`,
+    ]);
+    expect(err.some((line) => line.includes("lenient"))).toBe(false);
+  });
+
+  test("a lenient build that an assertion stopped does not claim the document problems are only warnings", async () => {
+    // A document problem (a skipped symbolic link) that lenient downgrades, and an assertion that fails.
+    const stopped = makeWorld();
+    stopped.stage = {
+      skipped: [{ path: "x.md", reason: "a symbolic link outside the repository" }],
+    };
+    stopped.assertions = emptyLink();
+    const failed = await run(stopped, { lenient: true });
+    expect(failed.result.ok).toBe(false);
+    expect(failed.all.some((line) => line.includes("only warnings"))).toBe(false);
+
+    // The same problem with every assertion passing: the notice is given, after the assertions, and the site is published.
+    const goes = makeWorld();
+    goes.stage = { skipped: [{ path: "x.md", reason: "a symbolic link outside the repository" }] };
+    const passed = await run(goes, { lenient: true });
+    expect(passed.result.ok).toBe(true);
+    const notice = passed.all.findIndex((line) => line.includes("only warnings"));
+    expect(notice).toBeGreaterThan(passed.all.findIndex((line) => line.startsWith("assert: ok:")));
+    expect(countOf(passed.all, "only warnings")).toBe(1);
+    expect(goes.calls).toContain("publish");
   });
 
   test("post-build warnings are printed and never fatal", async () => {
@@ -748,6 +873,41 @@ describe("--ci annotations (byte for byte)", () => {
     // a warning without a location is printed, not annotated
     expect(err).toContain("nav: warning: two pages share an address");
     expect(commands.some((line) => line.includes("two pages share"))).toBe(false);
+  });
+
+  test("a Markdown folder that is not docs/ is named by the printed line and by the annotation alike", async () => {
+    // "docs": "../documentation": GitHub can attach an annotation only to a file that exists
+    const world = makeWorld();
+    world.paths.docsDir = join(world.dir, "documentation");
+    world.lint = [
+      { file: "café.md", line: 9, level: "error", rule: "footnote", message: "Footnotes." },
+      { file: "guide/x.md", line: 2, level: "warning", rule: "task-list", message: "Tasks." },
+    ];
+    world.stage = {
+      skipped: [{ path: "link.md", reason: "a symbolic link outside the repository" }],
+    };
+    const { out, err } = await run(world, { strict: true, ci: true });
+    expect(err).toContain("lint: error: documentation/café.md:9  Footnotes.");
+    expect(err).toContain("lint: warning: documentation/guide/x.md:2  Tasks.");
+    expect(out.filter((line) => line.startsWith("::"))).toEqual([
+      "::error file=documentation/link.md,title=stage::documentation/link.md is a symbolic link outside the repository: not published",
+      "::error file=documentation/café.md,line=9,title=lint::Footnotes.",
+      "::warning file=documentation/guide/x.md,line=2,title=lint::Tasks.",
+    ]);
+    expect([...out, ...err].filter((line) => line.includes("docs/"))).toEqual([]);
+  });
+
+  test("the Markdown folder, relative to the repository, is what the navigation is told", async () => {
+    const world = makeWorld();
+    world.paths.docsDir = join(world.dir, "documentation");
+    const asked: unknown[] = [];
+    const writeNav = world.deps.writeNav;
+    world.deps.writeNav = (paths, config, o) => {
+      asked.push(o);
+      return writeNav(paths, config, o);
+    };
+    await run(world, { strict: true });
+    expect(asked).toEqual([{ folder: "documentation" }]);
   });
 
   test("annotations are on standard output with the rest of the progress, and absent without ci", async () => {

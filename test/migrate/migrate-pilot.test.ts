@@ -531,7 +531,7 @@ describe("package.json, .gitignore and the callers (step 3)", () => {
       }),
     );
     expect(action(plan(clone), ".github/workflows/docs.yml")?.after).toContain(
-      '"documentation/**"',
+      "      - documentation/**\n",
     );
     const outside = makeClone(
       starterClone({
@@ -558,7 +558,7 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
   });
 
   test.each(PILOT_NAMES)(
-    "on the real file of %s: one line changes, no second github-actions entry",
+    "on the real file of %s: the entry is converted and keeps the package out of its cooldown, no second github-actions entry",
     (pilot) => {
       const clone = makeClone(starterClone());
       copyPilotGithub(clone, pilot);
@@ -566,30 +566,56 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
       const dependabot = action(p, ".github/dependabot.yml");
       const before = (dependabot?.before ?? "").split("\n");
       const after = (dependabot?.after ?? "").split("\n");
-      expect(after.length).toBe(before.length);
-      expect(after.flatMap((line, i) => (line === before[i] ? [] : [line.trim()]))).toEqual([
-        "- package-ecosystem: npm",
-      ]);
+      // the exclude list is two lines; the ecosystem line and a comment that named Bun are the others
+      expect(after.length).toBe(before.length + 2);
+      expect(dependabot?.after).toContain(
+        '      default-days: 7\n      exclude:\n        - "@avunu/docusystem"\n',
+      );
+      expect(dependabot?.after).not.toContain("package-ecosystem: bun");
+      expect(dependabot?.after).not.toMatch(/\bBun\b/);
       expect((dependabot?.after ?? "").match(/package-ecosystem: github-actions/g)).toHaveLength(1);
+      expect(dependabot?.why).toContain(
+        "excluded @avunu/docusystem from the cooldown of the npm entry for /docs-site",
+      );
       const merge = action(p, ".github/workflows/dependabot-auto-merge.yml");
       expect(merge?.after).toContain("dependabot/npm_and_yarn/docs-site");
       expect(merge?.after).not.toContain("dependabot/bun/docs-site");
+      expect(merge?.after).not.toContain("gated by a repository variable");
       const lines = (merge?.after ?? "").split("\n").length;
       expect(lines).toBe((merge?.before ?? "").split("\n").length);
     },
   );
 
-  test("a cooldown that does not exclude the package or the workflows is advised about", () => {
+  test("what init could not do about a cooldown is advised: the github-actions entry, an npm entry that was there, a Bun comment about something else", () => {
     const clone = makeClone(starterClone());
     copyPilotGithub(clone, "erpnext_taskview");
     const advice = plan(clone).advice.join("\n");
     expect(advice).toContain(
-      'the npm entry for /docs-site has a cooldown that does not exclude "@avunu/docusystem"',
-    );
-    expect(advice).toContain(
       "the github-actions entry has a cooldown that does not exclude Avunu/docusystem",
     );
-    expect(advice).toContain('"Bun" in a comment');
+    // the converted entry excludes the package and its comments are reworded: nothing to say
+    expect(advice).not.toContain("the npm entry for /docs-site");
+    expect(advice).not.toContain('"Bun" in a comment');
+
+    const own = makeClone(
+      starterClone({
+        dependabot: [
+          "version: 2",
+          "updates:",
+          "  # The mobile app is built with Bun.",
+          "  - package-ecosystem: npm",
+          "    directory: /docs-site",
+          "    cooldown:",
+          "      default-days: 7",
+          "",
+        ].join("\n"),
+      }),
+    );
+    const ownAdvice = plan(own).advice.join("\n");
+    expect(ownAdvice).toContain(
+      'the npm entry for /docs-site has a cooldown that does not exclude "@avunu/docusystem"',
+    );
+    expect(ownAdvice).toContain('"Bun" in a comment');
   });
 
   test("a repository without a Dependabot file gets one with both entries", () => {
@@ -609,13 +635,13 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
     expect(p.advice.join("\n")).toContain("package-ecosystem: npm");
   });
 
-  test("an auto-merge workflow of another shape is advice, and one that is not an auto-merge workflow is left alone", () => {
+  test("an auto-merge workflow of a shape init cannot patch is advice, and one that is not an auto-merge workflow is left alone", () => {
     const odd = [
       "name: Auto merge",
       "on: pull_request",
       "jobs:",
       "  merge:",
-      "    if: github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false",
+      `    if: "github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false"`,
       "    runs-on: ubuntu-latest",
       '    steps:\n      - run: gh pr merge --auto "$PR"',
       "",
@@ -631,7 +657,10 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
       ".github/workflows/dependabot-auto-merge.yml",
     );
     expect(p.advice.join("\n")).toContain(
-      "dependabot-auto-merge.yml: its condition is not the standard",
+      "dependabot-auto-merge.yml: the condition of the job `merge` (line 5: `github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false`) is a shape init does not rewrite",
+    );
+    expect(p.advice.join("\n")).toContain(
+      "if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
     );
     expect(p.actions.map((a) => a.path)).not.toContain(".github/workflows/check.yml");
   });

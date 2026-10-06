@@ -68,6 +68,13 @@ describe("catalog.yml", () => {
     });
   });
 
+  test("the pull request body tells the reviewer to look for code and markup, not only for removed entries", () => {
+    const push = stepNamed(job?.steps, "Push a branch and open the pull request").run ?? "";
+    expect(push).toContain("a removed entry, or an entry whose `docs` address changed");
+    expect(push).toContain("a `${...}` expression, a `<` or `>`");
+    expect(push).toContain("`validateCatalog`");
+  });
+
   test("authenticates the one push through the environment, never a command line or the checkout", () => {
     const push = stepNamed(job?.steps, "Push a branch and open the pull request").run ?? "";
     expect(push).toContain("GIT_CONFIG_COUNT=1");

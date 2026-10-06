@@ -8,7 +8,8 @@
 // one as `ok`/`FAIL` (formatAssertion) and publishes nothing when one fails.
 //
 // The assertions read only `dist` (and the component files of the project root, to know which custom
-// elements are registered); they prove the output, not the code that made it.
+// elements are registered); they prove the output, not the code that made it. The last three, in
+// safety.ts, are the ones that keep a documentation pull request from running code on the site.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -22,20 +23,9 @@ import {
   strayExpression,
   visibleMarkup,
 } from "./links.js";
+import { safetyAssertions } from "./safety.js";
 import type { Assertion } from "./types.js";
-
-const pass = (message: string): Assertion => ({ ok: true, message });
-const fail = (message: string): Assertion => ({ ok: false, message });
-const verdict = (ok: boolean, good: string, bad: string): Assertion =>
-  ok ? pass(good) : fail(bad);
-
-/** `a, b, c and 4 more`: a bounded list for a message. */
-function listOf(items: string[], max = 5): string {
-  if (items.length <= max) return items.join(", ");
-  return `${items.slice(0, max).join(", ")} and ${items.length - max} more`;
-}
-
-const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
+import { fail, listOf, pass, plural, verdict } from "./verdict.js";
 
 /** One line as it is printed: `ok   <message>` or `FAIL <message>`. */
 export function formatAssertion(assertion: Assertion): string {
@@ -119,6 +109,23 @@ export function emptyLinks(html: string): string[] {
   return found;
 }
 
+/**
+ * Whether the head of a page holds more than one `<title>` or `</title>`. Jx writes the text of the
+ * title as it is, so a title that carries `</title>` ends the element early and what follows it is
+ * live HTML in the head (a `<script>` from a front-matter title, say). The text is the one thing that
+ * cannot be trusted to delimit itself, so this counts the tags instead of reading the text between
+ * them. The head ends at the last `</head>`: the Markdown of a page cannot write one (Jx escapes the
+ * text of the body), so it is Jx's own, even when the title has forged one earlier.
+ */
+export function titleHoldsMarkup(html: string): boolean {
+  const end = html.toLowerCase().lastIndexOf("</head");
+  const head = end === -1 ? html : html.slice(0, end);
+  return (
+    (head.match(/<title[\s/>]/gi)?.length ?? 0) > 1 ||
+    (head.match(/<\/title[\s/>]/gi)?.length ?? 0) > 1
+  );
+}
+
 // ---- Fonts ----
 
 /** Hosts of font services: a documentation site publishes its own fonts (the reader's address goes nowhere else). */
@@ -172,13 +179,15 @@ function hostOf(url: string): string | null {
  * Step 12. `root` is the assembled project root (its `components/` say which custom elements are
  * registered), `dist` the post-processed Jx output, `expected.cname` the configured domain and
  * `expected.routes` the number of pages the build must have produced (the sidebar's pages plus the
- * static ones; `null` leaves the count unchecked). Returns one assertion per fact, all of them even
- * after a failure, in the order the record lists them.
+ * static ones; `null` leaves the count unchecked). `expected.sources` says which Markdown file each
+ * page was built from (route to the file as the repository shows it, `docs/guide/x.md`), so that a
+ * failure about a page can name the file the author has to open. Returns one assertion per fact, all
+ * of them even after a failure, in the order the record lists them.
  */
 export function assertBuild(
   root: string,
   dist: string,
-  expected: { cname: string; routes: number | null },
+  expected: { cname: string; routes: number | null; sources?: Record<string, string> },
 ): Assertion[] {
   if (!existsSync(dist)) return [fail(`${dist} does not exist: the build produced nothing`)];
   const out: Assertion[] = [];
@@ -229,11 +238,17 @@ export function assertBuild(
     ),
   );
 
-  // No link with nothing to read (Jx writes a raw HTML anchor as `<a href></a>text`).
+  // No link with nothing to read (Jx writes a raw HTML anchor as `<a href></a>text`). The page is
+  // named with the Markdown file it was built from when that is known: the rendered HTML has no
+  // line, but lint reports the raw anchor for that file with one.
   const hollowLinks = pages.flatMap(({ route, html }) => {
     const found = emptyLinks(html);
+    const source = expected.sources?.[route];
     return found.length > 0
-      ? [`${route} (${found[0]}${found.length > 1 ? ` and ${found.length - 1} more` : ""})`]
+      ? [
+          `${route}${source === undefined ? "" : ` from ${source}`} ` +
+            `(${found[0]}${found.length > 1 ? ` and ${found.length - 1} more` : ""})`,
+        ]
       : [];
   });
   out.push(
@@ -256,6 +271,16 @@ export function assertBuild(
       headings.length === 0,
       "every page has exactly one <h1>",
       `pages without exactly one <h1>: ${listOf(headings)}`,
+    ),
+  );
+
+  // The text of <title> is text: Jx writes it unescaped, so a `</title>` in it would end the element.
+  const injected = pages.flatMap(({ route, html }) => (titleHoldsMarkup(html) ? [route] : []));
+  out.push(
+    verdict(
+      injected.length === 0,
+      "every page's <title> is text only, with no markup after it",
+      `the <title> ends early, so what follows it in the head is live markup (a title that holds </title>): ${listOf(injected)}`,
     ),
   );
 
@@ -406,6 +431,9 @@ export function assertBuild(
       ),
     );
   }
+
+  // Nothing in the pages runs somebody else's code, and every page says so to the browser (safety.ts).
+  out.push(...safetyAssertions(dist, files, pages));
   return out;
 }
 

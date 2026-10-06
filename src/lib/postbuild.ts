@@ -1,8 +1,14 @@
 // Step 11 of the pipeline (section 5.1): fixes up `<root>/dist` after `jx build`, in place.
 //   - whitespace: the emitter's separators between inline nodes and between highlighted code tokens
 //     (tidy.ts).
+//   - `${`: staging writes every one with a zero-width space inside, so that Jx cannot evaluate it
+//     (inert.ts); in the text of a page, the title, the meta tags and the search index it is written
+//     back (an attribute of the page itself keeps the space).
 //   - <title>: Jx writes the title text as it is, so a `<` in it ("Array<string>") is written raw;
-//     it is escaped.
+//     it is escaped. (The package's own pages hand Jx the title already escaped, because the text
+//     of a title can hold `</title>` and then cannot be told from the end of the element; this is
+//     the repair for the `<` of a page of the shell's own, and assert.ts fails the build when a
+//     `</title>` got through.)
 //   - canonical URL and og:url: Jx writes them without the trailing slash the pages are served at.
 //   - 404.html: GitHub Pages serves it for any unknown address (Jx writes it to 404/index.html).
 //   - index.md: Jx writes a Markdown copy of every page next to it (the whole page, menus and search
@@ -16,12 +22,16 @@
 //   - search-index.json: a page with no `title` in its frontmatter is indexed under its file name
 //     ("README"); the index is given the title the page shows.
 //   - code blocks whose language is not highlighted are reported (a warning, never a failure).
+//   - Content-Security-Policy: a meta that names the page's inline scripts by hash and refuses every
+//     other inline script, event handler and javascript: address (csp.ts).
 //
 // What this step does not do: check the result. That is assert.ts (step 12), which asserts on the
 // published files and not on what this module believes it did.
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { isInside, removeInside } from "./fsutil.js";
+import { withContentSecurityPolicy } from "./csp.js";
+import { restoreData, restoreText } from "./inert.js";
 import { distFiles, fileFor, htmlPages, routeOfFile } from "./links.js";
 import { publishNotFoundPage, tidyPage } from "./tidy.js";
 import type { DocsConfig, NavData, PostbuildSummary, RepoLink } from "./types.js";
@@ -41,7 +51,13 @@ export function unhighlightedLanguages(html: string): string[] {
   return [...found].sort();
 }
 
-/** Escapes `<`, `>` and a lone `&` in the text of <title>, which Jx writes unescaped. */
+/**
+ * Escapes `<`, `>` and a lone `&` in the text of <title>, which Jx writes unescaped. The text runs to
+ * the first `</title>`, so this cannot repair a title that holds one (the rest of it would be left
+ * as markup): pages/[...path].json escapes its titles before Jx writes them for that reason, and an
+ * override page that puts text it does not control in its title must do the same. The check of the
+ * result is titleHoldsMarkup in assert.ts.
+ */
 export function escapeTitle(html: string): string {
   return html.replace(
     /<title>([\s\S]*?)<\/title>/,
@@ -292,7 +308,7 @@ export function runPostbuild(
   for (const file of files) {
     const route = routeOfFile(dist, file);
     const before = readFileSync(file, "utf8");
-    let after = escapeTitle(tidyPage(before));
+    let after = restoreText(escapeTitle(tidyPage(before)));
     const plain = unhighlightedLanguages(after);
     if (plain.length > 0) {
       warnings.push(
@@ -318,6 +334,8 @@ export function runPostbuild(
       after = fixed;
       if (!isNoindex(after)) indexable.push(route);
     }
+    // Last, so that the policy names the scripts the page ends up with.
+    after = withContentSecurityPolicy(after);
     if (after !== before) writeFileSync(file, after);
   }
   writeFileSync(join(dist, "sitemap.xml"), sitemapXml(site, indexable));
@@ -326,9 +344,12 @@ export function runPostbuild(
   let searchTitles = 0;
   const searchFile = join(dist, "search-index.json");
   if (existsSync(searchFile)) {
-    const fixed = fixSearchIndex(readFileSync(searchFile, "utf8"), nav.pages);
+    const before = readFileSync(searchFile, "utf8");
+    const fixed = fixSearchIndex(before, nav.pages);
     searchTitles = fixed.changed;
-    if (fixed.changed > 0) writeFileSync(searchFile, fixed.text);
+    // the index is data that the search box shows as text: the marker of inert.ts is not needed in it
+    const restored = restoreData(fixed.changed > 0 ? fixed.text : before);
+    if (restored !== before) writeFileSync(searchFile, restored);
   }
 
   return {
