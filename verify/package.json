@@ -1,0 +1,28 @@
+{
+  "name": "docusystem-verify",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The browser suites of @avunu/docusystem: they build a throwaway adopting repository from the packed package and check the site it makes in a real Chrome. Maintainer tooling, not part of the published package.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "all": "bun run.ts",
+    "scaffold": "bun scaffold.ts",
+    "axe": "bun axe.ts",
+    "drawer": "bun drawer.ts",
+    "switcher": "bun switcher.ts",
+    "edge": "bun edge.ts",
+    "fences": "bun fences.ts",
+    "shots": "bun shots.ts",
+    "states": "bun states.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "playwright-core": "1.63.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}
