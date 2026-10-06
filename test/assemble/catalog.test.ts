@@ -125,6 +125,19 @@ describe("the catalog of the root", () => {
     );
   });
 
+  test("a reason that runs over several lines keeps the consequence on its first line", async () => {
+    fake.mockResolvedValue(
+      answer(
+        false,
+        "https://avunu.net/projects.json does not match the catalog contract:\n  - version must be 1\n  - projects[0].slug is missing",
+      ),
+    );
+    const result = await run(makeShell(), { refreshCatalog: true });
+    expect(result.warnings).toEqual([
+      `catalog: https://avunu.net/projects.json does not match the catalog contract; using the catalog bundled with ${name} ${version}\n  - version must be 1\n  - projects[0].slug is missing`,
+    ]);
+  });
+
   test("a sync that throws is a warning, not a failed build", async () => {
     fake.mockRejectedValue(new Error("not implemented (WP1)"));
     const result = await run(makeShell(), { refreshCatalog: true });

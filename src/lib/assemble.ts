@@ -272,7 +272,15 @@ export async function assemble(args: AssembleArgs, o: AssembleOptions = {}): Pro
     }
     rmSync(live, { force: true });
     if (catalog === "bundled") {
-      warnings.push(`catalog: ${message}; using the catalog bundled with ${name} ${version}`);
+      // The reason may run over several lines (the problems of a catalog that does not conform): the
+      // consequence belongs to the first line, the detail follows it.
+      const [reason = "", ...detail] = message.split("\n");
+      warnings.push(
+        [
+          `catalog: ${reason.replace(/:$/, "")}; using the catalog bundled with ${name} ${version}`,
+          ...detail,
+        ].join("\n"),
+      );
     }
   }
 
