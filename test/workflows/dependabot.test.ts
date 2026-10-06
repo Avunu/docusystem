@@ -18,24 +18,32 @@ interface Entry {
 }
 
 const config = readYaml<{ version: number; updates: Entry[] }>(".github", "dependabot.yml");
+/** The entry for the repository root: the package itself, as opposed to the documentation site's. */
 const entry = (ecosystem: string): Entry => {
-  const found = config.updates.find((candidate) => candidate["package-ecosystem"] === ecosystem);
+  const found = config.updates.find(
+    (candidate) => candidate["package-ecosystem"] === ecosystem && candidate.directory === "/",
+  );
   if (found === undefined) throw new Error(`no ${ecosystem} entry`);
   return found;
 };
 
 describe(".github/dependabot.yml", () => {
-  test("is version 2 with one npm and one github-actions entry, both for the repository root, weekly", () => {
+  test("is version 2: npm and github-actions for the repository root, plus npm for docs-site/, all weekly", () => {
     expect(config.version).toBe(2);
-    expect(config.updates.map((update) => update["package-ecosystem"]).sort()).toEqual([
-      "github-actions",
-      "npm",
-    ]);
+    expect(
+      config.updates.map((update) => `${update["package-ecosystem"]} ${update.directory}`).sort(),
+    ).toEqual(["github-actions /", "npm /", "npm /docs-site"]);
     for (const update of config.updates) {
-      expect(update.directory).toBe("/");
       expect(update.schedule.interval).toBe("weekly");
       expect(update.cooldown?.["default-days"]).toBe(7); // zizmor's dependabot-cooldown audit wants one
     }
+  });
+
+  test("the docs-site/ entry is this repository's own documentation: it never cuts a release, and takes the package without a cooldown", () => {
+    const docs = config.updates.find((update) => update.directory === "/docs-site");
+    expect(docs?.["package-ecosystem"]).toBe("npm");
+    expect(docs?.["commit-message"]?.prefix).toBe("chore");
+    expect(docs?.cooldown?.exclude).toEqual(["@avunu/docusystem"]);
   });
 
   test("the jx group takes every @jxsuite package, without a cooldown: a Jx fix should reach the sites within days", () => {
