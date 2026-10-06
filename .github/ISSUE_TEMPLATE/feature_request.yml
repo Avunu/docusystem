@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a change to the shared documentation system.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the documentation you want to write or publish, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to see?
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Does it touch the public surface?
+      description: URLs, docusystem.config.json keys, CLI commands and options, design token names, and the reusable workflows' inputs, permissions and job names are covered by semantic versioning.
+      options:
+        - label: I think it would be a breaking change for existing sites

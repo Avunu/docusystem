@@ -1,0 +1,388 @@
+name: CI
+
+# One required check, `ci`, that gathers the rest: a ruleset on main requires it and nothing else, so a
+# job can be renamed, added or removed without editing the ruleset. `ci` passes when every job it waits
+# for succeeded or was skipped (the fleet job only runs on a release pull request).
+#
+# A plain `pull_request` workflow: a fork's pull request gets a read-only token and no secrets, and
+# nothing here publishes. Publishing is release.yml.
+#
+# `workflow_dispatch` is how a pull request opened by a workflow gets its checks: release-please
+# (release.yml) and the catalog refresh (catalog.yml) open theirs with GITHUB_TOKEN, and a pull request
+# opened that way starts no `pull_request` workflows. They dispatch this workflow on the branch instead,
+# and the run reports `ci` on the branch head.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Format, lint, types, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # Format, lint, types, then the unit and integration tests (the integration project runs the real
+      # pinned Jx on the canary fixtures: the answer to "a Jx wording change made strictness fail open").
+      - name: Check
+        run: npm run check
+      - name: Build
+        run: npm run build
+
+  pack:
+    name: Tarball contents and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Allowlist and size budget of the tarball
+        run: npm run check:pack
+      - name: publint
+        run: npm run check:publint
+      - name: Are the types wrong
+        run: npm run check:types
+
+  # The packed tarball, installed into examples/basic the way a project installs it, on every runtime
+  # and package-manager layout the README claims to support (section 9.4 of the decision record). The
+  # first row is the Node floor. The tarball is built with Node 24 whatever the row; the row's Node is
+  # switched in afterwards.
+  consumers:
+    name: Consumer (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: "node 22 / npm" # row 1
+            os: ubuntu-latest
+            node: "22"
+            pm: npm
+            runtime: node
+            linker: hoisted
+          - label: "node 24 / npm" # row 2
+            os: ubuntu-latest
+            node: "24"
+            pm: npm
+            runtime: node
+            linker: hoisted
+            workspace: true
+          - label: "node 26 / npm" # row 3
+            os: ubuntu-latest
+            node: "26"
+            pm: npm
+            runtime: node
+            linker: hoisted
+          - label: "bun / bun hoisted" # row 4
+            os: ubuntu-latest
+            node: "24"
+            pm: bun
+            runtime: bun
+            linker: hoisted
+          - label: "bun / bun isolated" # row 5
+            os: ubuntu-latest
+            node: "24"
+            pm: bun
+            runtime: bun
+            linker: isolated
+          - label: "node / bun isolated" # row 6
+            os: ubuntu-latest
+            node: "24"
+            pm: bun
+            runtime: node
+            linker: isolated
+          # macOS: the CLI copies files, links the Jx packages and watches with fs.watch; nothing is Linux-only.
+          - label: "macOS node 24 / npm" # row 7
+            os: macos-latest
+            node: "24"
+            pm: npm
+            runtime: node
+            linker: hoisted
+          - label: "macOS bun / bun" # row 8
+            os: macos-latest
+            node: "24"
+            pm: bun
+            runtime: bun
+            linker: hoisted
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24 to build the tarball
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Set up Bun
+        if: ${{ matrix.pm == 'bun' || matrix.runtime == 'bun' }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4"
+          no-cache: true
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Switch to the row's Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Install the tarball into the example and check it
+        env:
+          PM: ${{ matrix.pm }}
+          RUNTIME: ${{ matrix.runtime }}
+          LINKER: ${{ matrix.linker }}
+        run: node scripts/test-pack.mjs --pm "$PM" --runtime "$RUNTIME" --linker "$LINKER"
+      # Hoisting moves @jxsuite/* up the tree when the shell lives in a workspace of a monorepo.
+      - name: The same, with the shell inside an npm workspaces monorepo
+        if: ${{ matrix.workspace }}
+        env:
+          PM: ${{ matrix.pm }}
+          RUNTIME: ${{ matrix.runtime }}
+          LINKER: ${{ matrix.linker }}
+        run: node scripts/test-pack.mjs --pm "$PM" --runtime "$RUNTIME" --linker "$LINKER" --workspace
+
+  # Row 9 of the matrix: informational. Windows is unsupported (junction links and path separators are
+  # untested); this finds path-separator bugs early. It is not in the `needs` of `ci`, and a failure
+  # here is reported as an annotation without failing the run.
+  windows:
+    name: Unit tests on Windows (informational)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Unit tests only
+        run: npm test -- --project unit
+
+  # The browser suites (verify/): axe on every page at three widths in both colour schemes plus the open
+  # overlays, the navigation drawer, the project switcher and the code fences. They run on the example's
+  # built site, which is the assembled Jx root's dist (it sits beside the data/ and docusystem.config.json
+  # the suites read). `shots.ts` leaves screenshots at 1440, 768 and 390 pixels in both schemes for a
+  # human to look at; there is no pixel diff.
+  verify:
+    name: Accessibility and behaviour in Chrome
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4"
+          no-cache: true
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Build the example from the tarball
+        run: node scripts/test-pack.mjs --keep "$RUNNER_TEMP/consumer"
+      - name: Install the browser suites
+        working-directory: verify
+        run: bun install --frozen-lockfile
+      - name: axe (WCAG 2.1 A and AA), the navigation drawer, the code fences
+        working-directory: verify
+        run: |
+          root="$RUNNER_TEMP/consumer/docs-site/.docusystem/site"
+          bun axe.ts "$root/dist"
+          bun drawer.ts "$root/dist" /docs/guide/install/
+          bun fences.ts "$root"
+      # The "You are here" state of the switcher exists only when the project's slug is in the catalog,
+      # so the example is rebuilt under a real catalog slug first.
+      - name: The project switcher, under a slug of the catalog
+        env:
+          CI: "true"
+        run: |
+          site="$RUNNER_TEMP/consumer/docs-site"
+          cd "$site"
+          jq '.slug = "frappe-nix"' docusystem.config.json > docusystem.config.json.new
+          mv docusystem.config.json.new docusystem.config.json
+          ./node_modules/.bin/docusystem build
+          cd "$GITHUB_WORKSPACE/verify"
+          bun switcher.ts "$site/.docusystem/site/dist" /docs/guide/install/
+      - name: Screenshots for review
+        if: ${{ !cancelled() }}
+        working-directory: verify
+        run: bun shots.ts "$RUNNER_TEMP/consumer/docs-site/.docusystem/site/dist" "$RUNNER_TEMP/shots"
+      - name: Upload the screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verify-shots
+          path: ${{ runner.temp }}/shots
+          retention-days: 7
+          if-no-files-found: ignore
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout, and zizmor's online audits read public repositories
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl --fail --silent --show-error --location --output actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf actionlint.tar.gz actionlint
+      - name: actionlint
+        run: ./actionlint -color .github/workflows/*.yml
+      # The example (WP9) is lint-checked wherever it exists; the `consumers` job fails without it.
+      - name: actionlint on the example's callers
+        if: ${{ hashFiles('examples/basic/.github/workflows/*.yml') != '' }}
+        run: ./actionlint -color examples/basic/.github/workflows/*.yml
+      - name: zizmor on this repository
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: "1.30.1"
+          persona: pedantic
+          advanced-security: false
+          inputs: >-
+            .github/workflows
+            .github/dependabot.yml
+      # The example's callers pin a placeholder commit that does not exist, so the audits that ask
+      # GitHub about the commit would fail by design: this one runs offline.
+      - name: zizmor on the example's callers (offline)
+        if: ${{ hashFiles('examples/basic/.github/workflows/*.yml') != '' }}
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: "1.30.1"
+          persona: pedantic
+          online-audits: false
+          advanced-security: false
+          inputs: examples/basic/.github
+
+  pr-title:
+    name: Pull request title
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      # The title and body reach the script through the environment: they are written by whoever opens
+      # the pull request and must never be interpolated into the command line.
+      - name: A Conventional Commit, and no raw HTML tag in what reaches the changelog
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-pr-title.mjs
+
+  # Only on the release pull request (release-please--* branches): every repository of the fleet must
+  # adopt this build and pass `check`, or be named with a reason in fleet.expected-failures.json, which a
+  # reviewer re-reads at each release. The weekly informational run is fleet.yml.
+  fleet:
+    name: Fleet
+    if: ${{ startsWith(github.head_ref || github.ref_name, 'release-please--') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read # checkout; the fleet's repositories are cloned without a token
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Adopt the build in every repository of the fleet
+        run: node scripts/fleet.mjs
+
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [check, pack, consumers, verify, workflows, pr-title, fleet]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every job passed (a skipped one is fine)
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null

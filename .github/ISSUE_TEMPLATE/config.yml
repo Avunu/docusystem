@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Avunu/docusystem/security/advisories/new
+    about: Please do not open a public issue for a vulnerability.
+  - name: Jx (the site framework)
+    url: https://github.com/jxsuite/jx/issues
+    about: Problems in the Jx compiler or runtime itself belong there.
