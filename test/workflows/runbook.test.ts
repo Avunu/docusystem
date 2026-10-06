@@ -7,7 +7,8 @@
 import { describe, expect, test } from "vitest";
 import { readJson, readText, workflow } from "./helpers.js";
 
-const maintaining = readText("MAINTAINING.md");
+// A Windows checkout may have CRLF line endings; the sections are found line by line.
+const maintaining = readText("MAINTAINING.md").replace(/\r\n/g, "\n");
 const release = workflow("release.yml");
 
 /** The text under the heading with this title, up to the next heading of the same or a higher level. */
