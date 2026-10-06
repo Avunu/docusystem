@@ -23,7 +23,7 @@ npm run check
 2. `npm install` creates `package-lock.json`. Commit it: CI installs it frozen.
 3. `npm run check` is what CI runs. The site is written to `docs-site/dist/`.
 
-`npm run dev` serves the site on `127.0.0.1:3000` the way GitHub Pages will, rebuilds when the Markdown changes and reloads the browser. `npx docusystem doctor` is the maintainer checklist as a command.
+`npm run dev` serves the site on `127.0.0.1:3000` the way GitHub Pages will, rebuilds when the Markdown changes and reloads the browser. `npx @avunu/docusystem doctor`, run in `docs-site/`, is the maintainer checklist as a command.
 
 ### Requirements
 
@@ -141,6 +141,9 @@ Use the cheapest rung that works. Each rung below the first costs some ability t
 
 Exit codes: 0 success, 1 a problem was found, 2 a usage error, 3 the environment (Node too old, a workflow contract mismatch, or another docusystem running). See the [command reference](docs/reference/command-line.md).
 
+> [!IMPORTANT]
+> Run the commands in the site folder, `docs-site/`, as `npx @avunu/docusystem <command>` (or from its `npm run` scripts), so that you get the copy the site has installed. Always write the scope. The unscoped name `docusystem` is not this package: in a folder where the package is not installed, `npx` with the bare name fetches and runs whatever package owns it.
+
 ## Upgrading
 
 The package is the only dependency a docs site lists, and it pins the exact Jx packages it was tested with. A new release arrives as one grouped Dependabot pull request, and a new workflow pin as another; a person reviews and merges them, and the merge publishes. By hand:
@@ -148,7 +151,7 @@ The package is the only dependency a docs site lists, and it pins the exact Jx p
 ```bash
 cd docs-site
 npm update @avunu/docusystem
-npx docusystem upgrade
+npx @avunu/docusystem upgrade
 npm run check
 ```
 
@@ -170,7 +173,7 @@ The workflows and the package share one integer, the workflow contract. The CLI 
 | Symptom                                                                                           | Cause and fix                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Exit 3: "Node ... is too old"                                                                     | The Node floor is 22.19.0. Install a current Node, or run with Bun 1.4 or newer                                                                         |
-| Exit 3 naming `uses:` lines                                                                       | The workflow pin and the installed package disagree on the workflow contract. Run `npx docusystem upgrade`                                              |
+| Exit 3 naming `uses:` lines                                                                       | The workflow pin and the installed package disagree on the workflow contract. Run `npx @avunu/docusystem upgrade` in `docs-site/`                       |
 | Exit 3 naming a process id                                                                        | Another docusystem holds the site's lock. Wait, or stop that process                                                                                    |
 | `doctor` errors on `bun.lock`, or the workflow refuses it                                         | The shared workflow installs with npm. Run `npm install`, commit `package-lock.json` and delete `bun.lock`                                              |
 | "K document problem(s) above fail the build"                                                      | A strict build collects every document problem and publishes nothing. Fix them, or use `docusystem build --lenient` locally while you work through them |

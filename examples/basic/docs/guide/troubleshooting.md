@@ -1,5 +1,7 @@
 <!-- Copyright (c) 2026 Avunu LLC -->
+
 ---
+
 title: Troubleshooting
 description: What to do when a check fails.
 order: 6
@@ -16,7 +18,8 @@ The comment above this page's front matter is a copyright stamp of the kind a pr
 In CI (`CI=true`) and in `docusystem check`, any document problem fails the build and every problem is listed with its file and line: a broken link, a missing image, a reference-style link or a footnote, which the site would silently lose.
 
 ```bash
-npx docusystem lint
+cd docs-site
+npx @avunu/docusystem lint
 ```
 
 > [!TIP]

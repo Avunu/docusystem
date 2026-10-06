@@ -71,11 +71,13 @@ Useful options:
 
 ## Check the result
 
+In `docs-site/`:
+
 ```bash
-npx docusystem doctor
+npx @avunu/docusystem doctor
 ```
 
-Still in `docs-site/`, this runs the maintainer checklist as far as a clone can show it, offline: the config, the workflows, Dependabot, the lockfile and overrides. It also prints the GitHub and DNS settings still to be made, with the exact values for this project. The [doctor reference](../reference/doctor.md) lists every check.
+This runs the maintainer checklist as far as a clone can show it, offline: the config, the workflows, Dependabot, the lockfile and overrides. It also prints the GitHub and DNS settings still to be made, with the exact values for this project. The [doctor reference](../reference/doctor.md) lists every check.
 
 ## What a maintainer still has to do
 

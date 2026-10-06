@@ -18,7 +18,7 @@ Exit 3, before any other work. The floor is the highest Node requirement among t
 
 ## The workflow contract does not match
 
-Exit 3. The reusable workflow exports the integer contract it was written for as `DOCUSYSTEM_WORKFLOW_CONTRACT`, and the installed package implements a different one, so the `uses:` pins and the package have drifted apart across a breaking change. The message names the two `uses:` lines to change. `npx docusystem upgrade` re-pins both callers to the tag of the installed version; or install the package release that matches the pin.
+Exit 3. The reusable workflow exports the integer contract it was written for as `DOCUSYSTEM_WORKFLOW_CONTRACT`, and the installed package implements a different one, so the `uses:` pins and the package have drifted apart across a breaking change. The message names the two `uses:` lines to change. `npx @avunu/docusystem upgrade`, run in `docs-site/`, re-pins both callers to the tag of the installed version; or install the package release that matches the pin.
 
 ## Another docusystem process is running
 
@@ -26,7 +26,7 @@ Exit 3, naming the process id. Two builds of one site would write the same `.doc
 
 ## `init` cannot resolve the workflow commit
 
-`init` and `upgrade` pin the workflows to the commit of the tag `v<installed version>`, read with `git ls-remote`. When that fails (offline, or the tag does not exist on GitHub) they exit 1 and name `--workflow-sha`. Pass the 40-character commit yourself: `npx docusystem init --workflow-sha <COMMIT_SHA>`. They never fall back to a tag, because a tag can move.
+`init` and `upgrade` pin the workflows to the commit of the tag `v<installed version>`, read with `git ls-remote`. When that fails (offline, or the tag does not exist on GitHub) they exit 1 and name `--workflow-sha`. Pass the 40-character commit yourself: `npx @avunu/docusystem init --workflow-sha <COMMIT_SHA>`. They never fall back to a tag, because a tag can move.
 
 ## `init` refuses to write a file
 
@@ -112,15 +112,17 @@ When something is wrong and the message is not enough, the build keeps everythin
 - `docs-site/.docusystem/manifest.json` records the package and Jx versions, where each file of the assembled root came from, shadowed and added files, the catalog source and whether the build was strict.
 - `docs-site/.docusystem/jx.log` is the raw output of the last Jx run.
 - `docs-site/.docusystem/site/` is the assembled Jx project, with the staged Markdown in `.generated/docs/` and the sidebar in `.generated/nav.json`.
-- `npx docusystem info` prints versions, folders, the resolved branch, overrides and the exact command to run Jx by hand; `--json` and `--nav` print it as JSON and the sidebar tree.
+- `npx @avunu/docusystem info`, run in `docs-site/`, prints versions, folders, the resolved branch, overrides and the exact command to run Jx by hand; `--json` and `--nav` print it as JSON and the sidebar tree.
 - When Jx fails, the build prints `docusystem: jx build failed. The assembled project is <root>; run: <execPath> <jx.js> build <root>`.
 
-To use Jx's own tools on the assembled root, run them through the pinned Jx:
+To use Jx's own tools on the assembled root, run them through the pinned Jx, in `docs-site/`:
 
 ```bash
-npx docusystem jx validate
-npx docusystem --site docs-site jx validate
+cd docs-site
+npx @avunu/docusystem jx validate
 ```
+
+From the repository root, run the installed copy instead: `./docs-site/node_modules/.bin/docusystem jx validate` finds `./docs-site` on its own, and `--site <folder>` names another site folder.
 
 `docusystem jx` assembles the project root (and never builds), then runs the pinned Jx CLI as `jx <arguments> <root>`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. It exits with Jx's exit code.
 
