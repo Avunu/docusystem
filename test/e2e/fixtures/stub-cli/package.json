@@ -1,0 +1,9 @@
+{
+  "name": "@avunu/docusystem",
+  "version": "0.0.1",
+  "description": "A stand-in for the packed package, used by the tests of scripts/test-pack.mjs and scripts/fleet.mjs: it has the command line surface they drive and builds a hand-made site.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "docusystem": "bin.mjs" },
+  "files": ["bin.mjs", "builder.mjs"]
+}

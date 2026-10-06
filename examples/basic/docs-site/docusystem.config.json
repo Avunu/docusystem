@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/@avunu/docusystem/config.schema.json",
+  "name": "Docusystem Example",
+  "tagline": "A sample repository that shows a documentation site made of Markdown and a few small files.",
+  "slug": "docusystem-example",
+  "platform": "general",
+  "repo": "https://github.com/Avunu/docusystem-example",
+  "domain": "docusystem-example.avunu.net",
+  "license": "MIT"
+}
