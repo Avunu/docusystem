@@ -130,12 +130,15 @@ Both pull requests run `docs.yml` and upload the built site as a review artifact
 
 <!-- prettier-ignore -->
 ```yaml
-    # The documentation site's package updates (docs-site/) are reviewed by a person: a merge to the
-    # default branch publishes the site.
-    if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}
+    # Updates of the documentation site's packages (docs-site/) and of the commit pin of its shared
+    # workflows (github-actions pull requests) are reviewed by a person: a merge to the default branch
+    # publishes the site.
+    if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}
 ```
 
-The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one; any other shape is left alone, printed with the line to add. `doctor` reports an auto-merge workflow that lacks the exclusion.
+The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one; a workflow that already skips the site's branches gets the second clause right after the first; any other shape is left alone, printed with the clauses to add. `doctor` reports an auto-merge workflow that lacks either exclusion.
+
+The second clause is there because the pull request that moves the commit pin is a `github-actions` one, and a merge publishes the site with the new workflow code. It skips every `github-actions` pull request of the repository, not only that one: a grouped pull request is on a branch named after the group (`dependabot/github_actions/<group>-<hash>`), so the branch does not say which dependencies are in it. A workflow that reads `dependabot/fetch-metadata` can skip on `!contains(steps.metadata.outputs.dependency-names, 'Avunu/docusystem')` instead, which `doctor` accepts as well.
 
 > [!NOTE]
 > The `docs.yml` path filter means its check is not reported on pull requests that touch no docs path, so it cannot be a required status check as it stands. Whether to make it always report, so that the exclusion can go, is an open decision of the maintainers; see [MAINTAINING.md](../../MAINTAINING.md).

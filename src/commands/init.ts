@@ -716,12 +716,17 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
         const before = read(path);
         if (before === null || !isAutoMergeWorkflow(before)) continue;
         const patched = patchAutoMerge(before, siteRel);
-        if (patched.note !== undefined) byHand.push(`${path}: ${patched.note}`);
-        else if (patched.changed) {
+        if (patched.changed) {
           changes.push(
-            planChange(path, before, patched.text, `${siteRel} updates now wait for a person`),
+            planChange(
+              path,
+              before,
+              patched.text,
+              `${siteRel} updates and the shared workflows' pin now wait for a person`,
+            ),
           );
         }
+        if (patched.note !== undefined) byHand.push(`${path}: ${patched.note}`);
       }
     }
   } catch (error) {

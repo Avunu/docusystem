@@ -1,4 +1,6 @@
-  # The pinned commit of the shared documentation workflows in .github/workflows/docs*.yml.
+  # The pinned commit of the shared documentation workflows in .github/workflows/docs*.yml. A person
+  # reviews these pull requests too: a merge to the default branch publishes the site with the new
+  # workflow code (see the auto-merge workflow, if any).
   - package-ecosystem: github-actions
     directory: /
     schedule:

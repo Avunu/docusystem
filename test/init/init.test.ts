@@ -880,12 +880,23 @@ jobs:
     const { out } = await init(root);
     const text = readIn(root, ".github/workflows/dependabot-auto-merge.yml") ?? "";
     expect(text).toContain(
-      "&& !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
+      "&& !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') && !startsWith(github.head_ref, 'dependabot/github_actions/') }}",
     );
-    expect(text).toContain(
-      "# The documentation site's package updates (docs-site/) are reviewed by a person",
+    expect(text).toContain("# Updates of the documentation site's packages (docs-site/) and of");
+    expect(out).toContain("docs-site updates and the shared workflows' pin now wait for a person");
+  });
+
+  test("an auto-merge workflow that skips the site's branches but not the github-actions ones gets that clause", async () => {
+    const before = automerge.replace(
+      "github.actor == 'dependabot[bot]'",
+      "github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')",
     );
-    expect(out).toContain("docs-site updates now wait for a person");
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": before } });
+    const { out } = await init(root);
+    expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(
+      before.replace("}}", "&& !startsWith(github.head_ref, 'dependabot/github_actions/') }}"),
+    );
+    expect(out).toContain("the shared workflows' pin now wait for a person");
   });
 
   test("another shape is left alone and the line to add is printed", async () => {
@@ -898,6 +909,21 @@ jobs:
     expect(code).toBe(0);
     expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(odd);
     expect(out).toContain("!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')");
+    expect(out).toContain("!startsWith(github.head_ref, 'dependabot/github_actions/')");
+  });
+
+  test("a bun exclusion that cannot take the github-actions clause is still converted, and the clause is printed", async () => {
+    const odd = automerge.replace(
+      "github.actor == 'dependabot[bot]'",
+      "github.actor == 'dependabot[bot]' && !contains(github.head_ref, 'dependabot/bun/docs-site')",
+    );
+    const root = makeRepo({ files: { ".github/workflows/dependabot-auto-merge.yml": odd } });
+    const { code, out } = await init(root);
+    expect(code).toBe(0);
+    expect(readIn(root, ".github/workflows/dependabot-auto-merge.yml")).toBe(
+      odd.replace("dependabot/bun/docs-site", "dependabot/npm_and_yarn/docs-site"),
+    );
+    expect(out).toContain("!startsWith(github.head_ref, 'dependabot/github_actions/')");
   });
 
   test("--no-patch-automerge", async () => {

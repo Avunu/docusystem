@@ -9,6 +9,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import {
+  actionsBranchPrefix,
+  hasActionsExclusion,
   hasSiteExclusion,
   isAutoMergeWorkflow,
   siteBranchPrefix,
@@ -399,19 +401,36 @@ function checkAutoMerge(repoRoot: string, siteRel: string, add: Add): void {
     if (!isAutoMergeWorkflow(text)) continue;
     found = true;
     const where = `${WORKFLOWS}/${file}`;
-    if (hasSiteExclusion(text, siteRel)) {
-      add("ok", `${where}: leaves the site's Dependabot pull requests to a person`);
+    const site = hasSiteExclusion(text, siteRel);
+    const actions = hasActionsExclusion(text);
+    // the pull request that moves the pin of the shared workflows is one of Dependabot's github-actions
+    // ones, and a merge publishes the site with the new workflow code
+    const pin =
+      `Dependabot's github-actions pull requests move the commit pin of the shared workflows, and a merge to the default branch publishes the site with the new workflow code: ` +
+      `add !startsWith(github.head_ref, '${actionsBranchPrefix}') to the condition`;
+    if (site && actions) {
+      add(
+        "ok",
+        `${where}: leaves the site's and the shared workflows' Dependabot pull requests to a person`,
+      );
+    } else if (site) {
+      add(
+        "error",
+        `${where} does not skip the github-actions pull requests: ${pin} (\`docusystem init\` does)`,
+      );
     } else if (withoutComments(text).includes(`dependabot/bun/${siteRel}`)) {
       add(
         "error",
         `${where} excludes dependabot/bun/${siteRel}, but the site's lockfile makes Dependabot's ecosystem npm: its branches are ${prefix}/...  ` +
-          `Change the exclusion to !startsWith(github.head_ref, '${prefix}') (\`docusystem init\` does)`,
+          `Change the exclusion to !startsWith(github.head_ref, '${prefix}') (\`docusystem init\` does)` +
+          (actions ? "" : `; also, ${pin}`),
       );
     } else {
       add(
         "error",
         `${where} merges Dependabot's pull requests but does not skip the site's: a merge to the default branch publishes the site. ` +
-          `Add !startsWith(github.head_ref, '${prefix}') to the condition (\`docusystem init\` does)`,
+          `Add !startsWith(github.head_ref, '${prefix}') to the condition (\`docusystem init\` does)` +
+          (actions ? "" : `; also, ${pin}`),
       );
     }
   }

@@ -54,7 +54,7 @@ your-repo/
 
 That list is closed: a project that needs more has an [override](#customizing), not another file. [`examples/basic`](examples/basic) is a complete adopting repository. A shell must not contain `components/`, `layouts/`, `pages/`, `project.json`, fonts, scripts, tests, a `bun.lock`, a committed `CNAME`, any `@jxsuite/*` dependency or an install script.
 
-If the repository has a `dependabot-auto-merge.yml`, `init` patches one line of it so that pull requests for the docs site stay under a person's review: a merge to the default branch publishes the site.
+If the repository has a `dependabot-auto-merge.yml`, `init` patches one line of it so that pull requests for the docs site, and the ones that move the pin of the shared workflows, stay under a person's review: a merge to the default branch publishes the site.
 
 ### What a maintainer does once
 

@@ -53,7 +53,7 @@ It writes these files (the same list as the [overview](../README.md#what-a-proje
 | `.github/workflows/docs.yml`                  | Checks the site on every pull request that touches the docs.                                                                                 |
 | `.github/workflows/docs-publish.yml`          | Builds on the default branch and publishes once the site is enabled.                                                                         |
 | `.github/dependabot.yml`                      | An npm entry for the site folder, plus a `github-actions` entry if the repository has none. An existing file is appended to, never replaced. |
-| `.github/workflows/dependabot-auto-merge.yml` | Only if the repository has one: a one-line patch that keeps pull requests for the docs site out of auto-merge.                               |
+| `.github/workflows/dependabot-auto-merge.yml` | Only if the repository has one: a one-line patch that keeps pull requests for the docs site and the workflow pin out of auto-merge.          |
 
 Both workflows pin the shared workflows to the commit of the tag `v<installed version>`, found with `git ls-remote`. If that cannot be resolved (offline, or the tag does not exist) `init` exits 1 and names `--workflow-sha`; it never falls back to a tag.
 
