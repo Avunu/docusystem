@@ -1,0 +1,109 @@
+name: Catalog
+
+# The documentation sites show a project switcher built from the avunu.net project catalog
+# (projects.json, version 1). The build uses the copy bundled in this package, so output never depends on
+# avunu.net at build time; this workflow keeps the bundled copy current. Weekly it runs
+# `npm run sync-catalog`; when the file changed it pushes a branch fix/catalog-<date> and opens a pull
+# request titled `fix(catalog): refresh the bundled project catalog`. A person merges it and the next
+# release carries the new catalog to every site as a patch.
+#
+# Pull requests opened with GITHUB_TOKEN start no `pull_request` workflows, so this workflow dispatches
+# ci.yml on the branch; the run reports the required `ci` check on the branch head.
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: catalog
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh the bundled project catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the branch fix/catalog-<date>
+      pull-requests: write # open the pull request
+      actions: write # dispatch ci.yml on the branch
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # One catalog pull request at a time: a person merges or closes it before the next one is opened.
+      - name: Look for an open catalog pull request
+        id: open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          open="$(gh pr list --state open --limit 200 --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("fix/catalog-"))] | length')"
+          echo "count=$open" >> "$GITHUB_OUTPUT"
+          if [ "$open" != "0" ]; then
+            echo "::notice title=catalog::a catalog pull request is already open; nothing to do"
+          fi
+
+      # This step runs this repository's own script and holds no token.
+      - name: Fetch the live catalog
+        if: ${{ steps.open.outputs.count == '0' }}
+        id: sync
+        run: |
+          npm run sync-catalog
+          if git diff --quiet -- site/data; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=catalog::the bundled catalog is current"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- site/data
+          fi
+
+      - name: Push a branch and open the pull request
+        if: ${{ steps.sync.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          branch="fix/catalog-$(date -u +%F)"
+          title="fix(catalog): refresh the bundled project catalog"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$branch"
+          git add site/data
+          git commit --quiet --message "$title" \
+            --message "The weekly catalog workflow fetched https://avunu.net/projects.json (version 1) and the bundled copy differs. The project switcher of every documentation site is built from this file."
+
+          # The checkout kept no credentials (persist-credentials: false), so this one push is
+          # authenticated the way actions/checkout does it, through the environment rather than a
+          # command line.
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          git push origin "HEAD:refs/heads/$branch"
+
+          body="$(mktemp)"
+          cat > "$body" <<'BODY'
+          The weekly catalog workflow fetched the live project catalog (https://avunu.net/projects.json, version 1) and the copy bundled in this package differs. The project switcher of every documentation site is built from the bundled file, so the change reaches the sites with the next release, as a patch.
+
+          Review the diff of `site/data/projects.snapshot.json`: a removed entry, or an entry whose `docs` address changed, is the thing to look at. CI is dispatched on this branch by the workflow, because a pull request opened with GITHUB_TOKEN starts no pull request workflows.
+          BODY
+          gh pr create --base "$DEFAULT_BRANCH" --head "$branch" --title "$title" --body-file "$body"
+          gh workflow run ci.yml --ref "$branch"
