@@ -1,20 +1,21 @@
 // Proves that every fenced code block of the Markdown comes out of the build with exactly its text:
 // the highlighter, the emitter and the whitespace fixes must neither lose nor add a character.
 //
-//   bun fences.ts <site folder>        (the docs-site folder of a built project)
+//   bun fences.ts <site folder or Jx root>
 //
-// Reads the sidebar data the build generated (`.docusystem/site/.generated/nav.json`), the Markdown in the
-// folder the resolved configuration names (`docsPath`, relative to the repository root, which is the
-// nearest folder above the site that has a `.git`) and the published pages in `<site>/dist`.
+// Takes the docs-site folder of a built project, or the assembled Jx root inside it
+// (`<site>/.docusystem/site`). Reads the sidebar data the build generated (`.generated/nav.json`), the
+// Markdown in the folder the resolved configuration names (`docsPath`, relative to the repository root,
+// which is the nearest folder above that has a `.git`) and the pages the build wrote (`dist/`).
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-const site = resolve(process.argv[2] ?? ".");
-const root = join(site, ".docusystem", "site");
-if (!existsSync(join(root, "docusystem.config.json"))) {
-  console.error(
-    `fences: ${site} has not been built (no .docusystem/site); run docusystem check first`,
-  );
+const given = resolve(process.argv[2] ?? ".");
+const root = existsSync(join(given, ".generated", "nav.json"))
+  ? given
+  : join(given, ".docusystem", "site");
+if (!existsSync(join(root, ".generated", "nav.json"))) {
+  console.error(`fences: ${given} has not been built (no .generated/nav.json); run docusystem check first`);
   process.exit(2);
 }
 const nav = JSON.parse(readFileSync(join(root, ".generated", "nav.json"), "utf8")) as {
@@ -23,11 +24,11 @@ const nav = JSON.parse(readFileSync(join(root, ".generated", "nav.json"), "utf8"
 const config = JSON.parse(readFileSync(join(root, "docusystem.config.json"), "utf8")) as {
   docsPath: string;
 };
-let repoRoot = dirname(site);
+let repoRoot = dirname(given);
 while (!existsSync(join(repoRoot, ".git")) && dirname(repoRoot) !== repoRoot) {
   repoRoot = dirname(repoRoot);
 }
-const docs = join(existsSync(join(repoRoot, ".git")) ? repoRoot : dirname(site), config.docsPath);
+const docs = join(repoRoot, config.docsPath);
 
 const decode = (html: string) =>
   html
@@ -76,7 +77,7 @@ let bad = 0;
 for (const [url, info] of Object.entries(nav.pages)) {
   const source = readFileSync(join(docs, info.edit), "utf8");
   const wanted = fencesOf(source);
-  const file = join(site, "dist", url.replace(/^\//, ""), "index.html");
+  const file = join(root, "dist", url.replace(/^\//, ""), "index.html");
   if (!existsSync(file)) continue;
   const built = [
     ...readFileSync(file, "utf8").matchAll(
