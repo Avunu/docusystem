@@ -218,6 +218,53 @@ describe.skipIf(waiting.length > 0)(
       });
     });
 
+    describe("a raw HTML anchor in an otherwise clean tree", () => {
+      // The page of the finding: Markdown that the earlier starter built and published with an empty link.
+      const rawAnchor = (): Repo =>
+        repoFrom("canary/clean", {
+          "docs/problems/raw.md":
+            '---\ntitle: Raw anchor\n---\n\nRead <a href="../guide/install.md">how to install</a> first.\n',
+        });
+
+      test("a lenient build (the default outside CI, and what dev runs) fails on the empty link and names the page, the file and why", async () => {
+        const repo = rawAnchor();
+        const { code, stdout, stderr } = await runCli(["build"], {
+          cwd: repo.siteDir,
+          env: jxEnv(),
+        });
+        const all = `${stdout}\n${stderr}`;
+        expect(code, all).toBe(1);
+        expect(existsSync(repo.paths.dist)).toBe(false);
+        // lint says where (file:line, whatever its level is called) ...
+        expect(all).toMatch(/^lint: (?:warning|error): docs\/problems\/raw\.md:5 .*<a href>/m);
+        // ... the assertion names the same file, so the two lines can be put together ...
+        expect(all).toMatch(
+          /^assert: FAIL: links with nothing inside: \/docs\/problems\/raw\/ from docs\/problems\/raw\.md \(<a href="\/docs\/guide\/install\/">\)/m,
+        );
+        // ... and the closing lines say that leniency does not reach it, instead of "only warnings".
+        expect(all).toMatch(
+          /^docusystem: 1 output assertion\(s\) failed\. Nothing was published\.$/m,
+        );
+        expect(all).toMatch(
+          /^docusystem: a lenient build .* output assertions fail every build\./m,
+        );
+        expect(all).not.toMatch(/only warnings/);
+      });
+
+      test("the same page written as a Markdown link builds, with no failure and no leniency notice", async () => {
+        const repo = repoFrom("canary/clean", {
+          "docs/problems/raw.md":
+            "---\ntitle: Raw anchor\n---\n\nRead [how to install](../guide/install.md) first.\n",
+        });
+        const { code, stdout, stderr } = await runCli(["build"], {
+          cwd: repo.siteDir,
+          env: jxEnv(),
+        });
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(`${stdout}\n${stderr}`).not.toMatch(/FAIL|lenient build/);
+      });
+    });
+
     describe("two docusystem processes", () => {
       const children: Array<{ kill: () => void }> = [];
       afterEach(() => {

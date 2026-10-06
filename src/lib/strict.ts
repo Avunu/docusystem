@@ -88,12 +88,39 @@ export function strictFailure(count: number): string {
   );
 }
 
-/** The last line of a lenient build that had document problems: they are warnings now, errors in CI. */
+/**
+ * The last line of a lenient build that had document problems and went on to publish: they are
+ * warnings now, errors in CI. A lenient build that an output assertion stopped says assertionFailure
+ * instead, because "only warnings" would be untrue of it.
+ */
 export function lenientNotice(count: number): string {
   return (
     `docusystem: ${count} document problem(s) above are only warnings because the build is lenient. ` +
     "A strict build (CI=true, and every check) fails on them."
   );
+}
+
+/**
+ * The closing lines of a build that an output assertion (step 12) stopped: nothing was published.
+ * Assertions are never downgraded, so a lenient build (the default outside CI, and always `dev`) says
+ * so: its lint lines were printed as warnings, and a reader who then meets `FAIL` has to be told that
+ * leniency does not reach it. `linted` says that lint printed something above: the lines tie a
+ * failure to the lint line of the same page, which is where the cause of an output assertion that
+ * names a page usually is (a raw HTML `<a href>`: lint warns, the assertion cannot let it through).
+ */
+export function assertionFailure(count: number, o: { strict: boolean; linted: boolean }): string[] {
+  const cause =
+    "If a lint warning above is about the page an assertion names, that warning is the cause: fix it.";
+  const lines = [`docusystem: ${count} output assertion(s) failed. Nothing was published.`];
+  if (!o.strict) {
+    lines.push(
+      "docusystem: a lenient build (the default outside CI, and always `docusystem dev`) relaxes " +
+        `document problems only; output assertions fail every build.${o.linted ? ` ${cause}` : ""}`,
+    );
+  } else if (o.linted) {
+    lines.push(`docusystem: ${cause}`);
+  }
+  return lines;
 }
 
 /** The header of Jx's failure message when `content.docs.links` is `"error"` and a link is broken. */
