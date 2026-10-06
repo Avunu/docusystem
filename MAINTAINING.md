@@ -93,6 +93,18 @@ The order matters, because a thin shell needs a published package, a release tag
 
 The pilots are the first three repositories to adopt the system: `frappe-nix`, `erpnext_taskview` and `cloudflare-email-relay`. No pilot is changed until G3 holds. The proof pilot is `cloudflare-email-relay`, whose docs and workflows are the smallest.
 
+### Launch order for the Projects menu
+
+The project switcher of every docs site links to avunu.net, which has not relaunched yet. Read on 2026-10-06: `https://avunu.net/` answers 200 (the current site), but `https://avunu.net/projects.json` and `https://avunu.net/open-source/` answer 404, and so does the page of every bundled catalog entry that has no `docs` address (`https://avunu.net/open-source/<slug>/`: 25 of the 26 entries; the 26th, Jx, links to its own docs on jxsuite.com). A site enabled in that state works, but the browser's fetch of the live catalog fails quietly, the menu keeps the bundled list, and its links to avunu.net pages answer 404.
+
+Nothing needs rebuilding when avunu.net relaunches: the bundled links are the final addresses (the 26 slugs of the catalog match the 26 project pages drafted for the relaunch), and each page swaps in the live catalog when idle. The order therefore only decides what the first visitors see:
+
+1. **Relaunch avunu.net first.** It must serve `/projects.json` (version 1, with CORS headers, because the docs sites fetch it from their own origins) and `/open-source/<slug>/` for every catalog entry.
+2. **Then enable each site.** Before setting `DOCS_SITE_ENABLED` on a repository, check `curl -fsSI https://avunu.net/projects.json` and `curl -fsSI https://avunu.net/open-source/<slug>/` for the repository's own slug. `docusystem init` and `docusystem doctor` print the condition next to the variable.
+3. **Link the site last.** The README link and the `docs:` line of the avunu.net catalog entry come after the site is live, so that until then nothing sends a visitor to it.
+4. **The proof pilot may go early.** Gate G4 needs a real deploy (row 2 of [Verified on GitHub](#verified-on-github)), so it cannot wait for the relaunch. Enable it and accept the dead menu: nothing links to its address yet. A maintainer may do the same for any other pilot.
+5. **After the relaunch, take the refresh.** Until avunu.net publishes `projects.json`, `catalog.yml` treats the 404 as "no change". Once it does, the weekly run compares the live catalog with the bundled one and opens a pull request if they differ (for example when entries gain `docs:` addresses); merge it so that the next release carries it.
+
 ## Verified on GitHub
 
 These GitHub behaviors have never been run. Confirm them on the proof pilot (gate G4) and record each result here in the pull request that confirms it. Until then the result is a placeholder.

@@ -110,7 +110,7 @@ The layouts and pages read the resolved config through the content type `config`
 
 ## The catalog
 
-The project switcher is built from a catalog bundled in the package, so the build needs no network and the output does not depend on avunu.net at build time. A weekly job in this repository proposes a refresh as a patch release. In the browser the page swaps in the live `https://avunu.net/projects.json` when idle. `--refresh-catalog` makes a build fetch the live one (a 5-second timeout) and accept it only if it passes the version-1 contract; otherwise the build keeps the bundled one and prints a `catalog:` warning.
+The project switcher is built from a catalog bundled in the package, so the build needs no network and the output does not depend on avunu.net at build time. A weekly job in this repository proposes a refresh as a patch release. In the browser the page swaps in the live `https://avunu.net/projects.json` when idle; while avunu.net does not serve it, the fetch fails quietly and the bundled list stays (an entry without a `docs` address then links to its page on avunu.net, which exists only once avunu.net has relaunched: see [the order of launch](../guide/publishing.md#what-a-maintainer-sets-once)). `--refresh-catalog` makes a build fetch the live one (a 5-second timeout) and accept it only if it passes the version-1 contract; otherwise the build keeps the bundled one and prints a `catalog:` warning.
 
 ## The dev server
 

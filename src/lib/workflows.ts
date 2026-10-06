@@ -388,7 +388,7 @@ export function maintainerSteps(config: {
     "GitHub Pages: Settings > Pages > Source: GitHub Actions",
     `Custom domain: ${config.domain} (Settings > Pages); turn on "Enforce HTTPS" once the certificate exists`,
     `DNS: CNAME ${label} -> avunu.github.io (DNS only until the certificate exists)`,
-    "Repository variable: DOCS_SITE_ENABLED = true (Settings > Secrets and variables > Actions > Variables); until then the workflows build and check the site but do not publish it",
+    "Repository variable: DOCS_SITE_ENABLED = true (Settings > Secrets and variables > Actions > Variables); until then the workflows build and check the site but do not publish it. Set it after avunu.net serves https://avunu.net/projects.json and its project pages: before that the Projects menu of the site keeps its bundled list, and its links to avunu.net pages answer 404",
     `Branch protection on ${config.branch ?? "the default branch"}: every push to it publishes the site`,
     `avunu.net catalog: docs: https://${config.domain} in the entry for ${config.slug}`,
     "In the repository: link the documentation from the README, and exclude docs/ from formatters and hooks that rewrite Markdown (for example a copyright stamp above the front matter)",
