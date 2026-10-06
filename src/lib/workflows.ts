@@ -39,7 +39,7 @@ export function cleanSiteDir(text: string): string | null {
   return site === "" ? null : site;
 }
 
-/** Characters a docs folder may have so that it can sit in a quoted `paths:` glob and mean itself. */
+/** Characters a docs folder may have so that it can sit in a plain `paths:` glob and mean itself. */
 const DOCS_SEGMENT = /^[A-Za-z0-9_.][A-Za-z0-9_. -]*$/;
 
 /**
@@ -100,8 +100,11 @@ export function renderScaffold(
   const bare = bareVersion(v.version);
   if (bare === null) throw new Error(`"${v.version}" is not a version (MAJOR.MINOR.PATCH)`);
   const template = readScaffold(file);
-  // The Markdown folder may be the repository itself: the glob is then `**`, not `/**`.
-  const text = docs === "" ? template.replaceAll(`"@@DOCS@@/**"`, `"**"`) : template;
+  // The Markdown folder may be the repository itself: the glob is then `**`, not `/**`. A bare `**`
+  // would be read as an alias, so this one entry is quoted; the others are plain scalars, which no
+  // formatter rewrites whatever its quote style (the list is a block list for the same reason: a
+  // one-line list is re-wrapped by oxfmt and prettier as soon as it is wider than their print width).
+  const text = docs === "" ? template.replaceAll("- @@DOCS@@/**", `- "**"`) : template;
   return fillTemplate(text, { DOCS: docs, SITE: v.site, SHA: v.sha, VERSION: `v${bare}` });
 }
 
@@ -404,6 +407,7 @@ export function maintainerSteps(config: {
     `Branch protection on ${config.branch ?? "the default branch"}: every push to it publishes the site`,
     `avunu.net catalog: docs: https://${config.domain} in the entry for ${config.slug}`,
     "In the repository: link the documentation from the README, and exclude docs/ from formatters and hooks that rewrite Markdown (for example a copyright stamp above the front matter)",
+    'If a formatter checks every file of the repository (oxfmt, prettier): run it over the new files before the pull request (init matches the indentation that it can read from the formatter\'s configuration, .editorconfig or the root package.json), or leave the folder alone with an ignore pattern for it, for example "ignorePatterns": ["docs-site"] in .oxfmtrc.json',
     `Later, when the site is retired or its domain changes (Pages unpublished, repository deleted, archived or renamed): delete the CNAME of the old domain (now: ${label}) and its docs: line in the catalog in the same change, so that no record is left pointing at avunu.github.io`,
   ];
 }

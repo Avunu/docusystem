@@ -531,7 +531,7 @@ function checkRepo(site: string, siteRel: string, repoRoot: string, add: Add): v
   if (formatters.length > 0) {
     add(
       "ok",
-      `note: ${formatters.join(", ")} may reformat the Markdown of docs/; exclude the folder if that is not wanted (it is not checked here)`,
+      `note: ${formatters.join(", ")} may reformat the Markdown of docs/; exclude the folder if that is not wanted. The same formatter also checks ${siteRel}/ and the caller workflows: init writes them the way oxfmt and prettier print them, but if the repository's format check fails on them, run the formatter over them or ignore ${siteRel} in its configuration (none of this is checked here)`,
     );
   }
 }

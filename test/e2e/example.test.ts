@@ -284,7 +284,11 @@ describe("the rest of the repository", () => {
   it("keeps its formatter out of the Markdown, which staging repairs and a formatter would break", () => {
     const config = json(".oxfmtrc.json");
     expect(config.ignorePatterns).toContain("docs");
-    expect(config.printWidth).toBe(120); // the callers' `paths:` list stays on one line, as init writes it
+    // nothing else: the callers and the shell pass the formatter at its default width and quotes, which
+    // the format check of this repository proves (a one-line `paths:` list did not: oxfmt re-wraps it)
+    expect(
+      Object.keys(config).filter((key) => key !== "$schema" && key !== "ignorePatterns"),
+    ).toEqual([]);
   });
 });
 

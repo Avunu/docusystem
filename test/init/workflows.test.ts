@@ -50,6 +50,18 @@ describe("the scaffold", () => {
     );
   });
 
+  test("lists the paths of each caller one entry per line, which no formatter re-wraps", () => {
+    // A one-line `paths: [...]` list is wider than 100 columns and is re-wrapped by oxfmt and prettier
+    // (see formatter.test.ts), so the adoption pull request fails the repository's own format check.
+    for (const file of ["docs.yml", "docs-publish.yml"] as const) {
+      const text = readScaffold(file);
+      expect(text, file).not.toMatch(/^\s*paths:\s*\[/m);
+      expect(text, file).toMatch(
+        /^ {4}paths:\n {6}- @@DOCS@@\/\*\*\n {6}- @@SITE@@\/\*\*\n {6}- \.github\/workflows\/docs\.yml\n {6}- \.github\/workflows\/docs-publish\.yml\n/m,
+      );
+    }
+  });
+
   test("leaves no token behind", () => {
     for (const file of ["docs.yml", "docs-publish.yml"] as const) {
       expect(renderScaffold(file, VALUES)).not.toMatch(/@@/);
@@ -79,7 +91,10 @@ describe("the scaffold", () => {
     const text = renderScaffold("docs-publish.yml", { ...VALUES, docs: "" });
     const workflow = parse(text) as { on: { push: { paths: string[] } } };
     expect(workflow.on.push.paths[0]).toBe("**");
-    expect(renderScaffold("docs.yml", { ...VALUES, docs: "." })).toContain('paths: ["**", ');
+    // a bare ** would be an alias: this one entry is quoted, the others are plain scalars
+    expect(renderScaffold("docs.yml", { ...VALUES, docs: "." })).toContain(
+      'paths:\n      - "**"\n      - docs-site/**\n',
+    );
   });
 
   test("refuses values that could not be put into a workflow safely", () => {
@@ -361,6 +376,12 @@ describe("maintainerSteps", () => {
     expect(last).toContain("when the site is retired or its domain changes");
     expect(last).toContain("delete the CNAME of the old domain (now: frappe-nix)");
     expect(last).toContain("no record is left pointing at avunu.github.io");
+  });
+
+  test("tell a repository with a formatter to run it over the new files, or to ignore docs-site", () => {
+    const text = maintainerSteps({ domain: "frappe-nix.avunu.net", slug: "frappe-nix" }).join("\n");
+    expect(text).toContain("If a formatter checks every file of the repository (oxfmt, prettier)");
+    expect(text).toContain('"ignorePatterns": ["docs-site"]');
   });
 
   test("a domain outside avunu.net is its own record, and a configured branch is named", () => {

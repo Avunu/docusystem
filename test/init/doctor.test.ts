@@ -382,16 +382,18 @@ describe("workflows", () => {
       [PUBLISH, "push"],
     ])("%s: a paths filter that lacks a folder is an error", async (file, event) => {
       const root = await initialisedRepo();
-      rewrite(root, file, (text) => text.replace('"docs-site/**"', '"website/**"'));
+      rewrite(root, file, (text) => text.replace("- docs-site/**", "- website/**"));
       expect(errors(root)).toContain(`on.${event}.paths does not list "docs-site/**"`);
       const docs = await initialisedRepo();
-      rewrite(docs, file, (text) => text.replace('"docs/**"', '"guides/**"'));
+      rewrite(docs, file, (text) => text.replace("- docs/**", "- guides/**"));
       expect(errors(docs)).toContain(`on.${event}.paths does not list "docs/**"`);
     });
 
     test("no paths filter at all disagrees with nothing", async () => {
       const root = await initialisedRepo();
-      rewrite(root, DOCS, (text) => text.replace(/\n {4}paths: .*\n/, "\n"));
+      const bare = (text: string): string => text.replace(/\n {4}paths:\n(?: {6}- .*\n)+/, "\n");
+      rewrite(root, DOCS, bare);
+      expect(readIn(root, DOCS)).not.toContain("paths:");
       expect(at(root, "error")).toEqual([]);
     });
   });
@@ -910,6 +912,9 @@ describe("the rest of the repository", () => {
     expect(note?.message).toContain(
       ".oxfmtrc.json, .prettierrc may reformat the Markdown of docs/",
     );
+    // and that it checks the shell as well: the folder it can be told to ignore is named
+    expect(note?.message).toContain("also checks docs-site/ and the caller workflows");
+    expect(note?.message).toContain("ignore docs-site in its configuration");
   });
 });
 

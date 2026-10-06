@@ -531,7 +531,7 @@ describe("package.json, .gitignore and the callers (step 3)", () => {
       }),
     );
     expect(action(plan(clone), ".github/workflows/docs.yml")?.after).toContain(
-      '"documentation/**"',
+      "      - documentation/**\n",
     );
     const outside = makeClone(
       starterClone({

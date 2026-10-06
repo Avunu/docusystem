@@ -12,4 +12,4 @@ It is not part of the published package. It is what the package is tested agains
 
 The callers in `.github/workflows/` carry the placeholder commit `0000000000000000000000000000000000000000 # v0.0.0`: `docusystem init` writes the commit of the release tag of the installed version in its place. The shell depends on `@avunu/docusystem` `^0.1.0`, which `test-pack` replaces by the tarball it has just packed; the example therefore has no lockfile.
 
-Its `.oxfmtrc.json` keeps the repository's formatter out of `docs/` (a formatter breaks a page that starts with a copyright comment, which is what `docs/guide/troubleshooting.md` does on purpose) and lets the callers' `paths:` lists stay on one line, as `init` writes them.
+Its `.oxfmtrc.json` keeps the repository's formatter out of `docs/` (a formatter breaks a page that starts with a copyright comment, which is what `docs/guide/troubleshooting.md` does on purpose). It changes nothing else: the callers and the shell pass the formatter's check at its default settings, exactly as `init` writes them, and the format check of this repository proves it.

@@ -19,6 +19,7 @@ import { checkSlug } from "../lib/preflight.js";
 import { gitRootOf, normalizeRemote, originRemote, repoName, runGit } from "../lib/gitremote.js";
 import { isAutoMergeWorkflow, patchAutoMerge } from "../lib/automerge.js";
 import { name as PACKAGE, version } from "../lib/package-info.js";
+import { detectJsonIndent, indentOf, type Indent } from "../lib/indent.js";
 import { COMMIT, repinWorkflow, resolvePin, type PinResult } from "../lib/pin.js";
 import { PLATFORMS } from "../lib/platforms.js";
 import type { CatalogProject, DocsConfig } from "../lib/types.js";
@@ -292,17 +293,18 @@ const dependencyRange = (): string => {
 
 const lf = (text: string): string => text.replace(/\r\n/g, "\n");
 
-/** The configuration file's text: `$schema` first, then the keys in the order of the schema. */
-function configText(config: DocsConfig, schema: string): string {
+/**
+ * The configuration file's text: `$schema` first, then the keys in the order of the schema, indented
+ * the way the repository's formatter wants JSON (see ../lib/indent.ts).
+ */
+function configText(config: DocsConfig, schema: string, indent: Indent): string {
   const ordered: Record<string, unknown> = { $schema: schema };
   for (const key of [...IDENTITY, "branch", "docs", "theme", "images", "jx"] as const) {
     const value = (config as unknown as Record<string, unknown>)[key];
     if (value !== undefined) ordered[key] = value;
   }
-  return `${JSON.stringify(ordered, null, 2)}\n`;
+  return `${JSON.stringify(ordered, null, indent)}\n`;
 }
-
-const indentOf = (text: string): string | number => /^([ \t]+)\S/m.exec(text)?.[1] ?? 2;
 
 interface PackagePlan {
   after?: string;
@@ -316,6 +318,7 @@ function planPackage(
   before: string | null,
   slug: string,
   force: boolean,
+  fallbackIndent: Indent,
 ): PackagePlan {
   const notes: string[] = [];
   const fresh = {
@@ -325,7 +328,7 @@ function planPackage(
     scripts: { ...SCRIPTS },
     dependencies: { [PACKAGE]: dependencyRange() },
   };
-  if (before === null) return { after: `${JSON.stringify(fresh, null, 2)}\n`, notes };
+  if (before === null) return { after: `${JSON.stringify(fresh, null, fallbackIndent)}\n`, notes };
 
   let pkg: Record<string, unknown>;
   try {
@@ -352,7 +355,7 @@ function planPackage(
     ...(scripts.postinstall === undefined ? [] : ["a postinstall script"]),
     ...(jxDeps.length === 0 ? [] : [`a dependency on ${jxDeps.join(", ")}`]),
   ];
-  const indent = indentOf(before);
+  const indent = indentOf(before) ?? fallbackIndent;
   const finish = (next: Record<string, unknown>): string =>
     `${JSON.stringify(next, null, indent)}\n`;
 
@@ -570,13 +573,18 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
           "run `docusystem doctor` to see what is wrong, or use --force to drop them",
       );
     }
+    // New JSON files are indented the way the repository's formatter wants JSON, so that its own
+    // format check passes on the adoption pull request; an existing file keeps its indentation.
+    const indent = detectJsonIndent(repoRoot);
+    const configBefore = read(siteFile(CONFIG_FILE));
     changes.push(
       planChange(
         siteFile(CONFIG_FILE),
-        read(siteFile(CONFIG_FILE)),
+        configBefore,
         configText(
           config,
           typeof existing?.values.$schema === "string" ? existing.values.$schema : SCHEMA,
+          configBefore === null ? indent : (indentOf(configBefore) ?? indent),
         ),
       ),
     );
@@ -587,6 +595,7 @@ export async function runInit(ctx: CommandContext, deps: InitDeps): Promise<numb
       read(siteFile("package.json")),
       config.slug,
       force,
+      indent,
     );
     if (pkg.refusal !== undefined) refusals.push(pkg.refusal);
     else if (pkg.after !== undefined) {

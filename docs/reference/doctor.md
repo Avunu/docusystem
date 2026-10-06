@@ -94,4 +94,4 @@ All warnings:
 - A `.pre-commit-config.yaml` with a copyright hook (exclude `^docs/` from it).
 - Leftovers of the earlier starter in the site folder: `components/`, `layouts/`, `pages/`, `project.json` or `scripts/`.
 
-Formatter configurations that would reformat `docs/` are only mentioned.
+Formatter configurations that would reformat `docs/`, or that also check the site folder and the caller workflows, are only mentioned (doctor does not run the formatter).
