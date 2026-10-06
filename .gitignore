@@ -3,5 +3,7 @@ dist
 .docusystem
 coverage
 *.tgz
+*.tsbuildinfo
 .env*
 .DS_Store
+.vitest
