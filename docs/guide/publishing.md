@@ -86,9 +86,10 @@ The `paths` globs and `site-directory` follow the config: the docs folder relati
 None of this can be done by a pull request. `docusystem init` prints it with your values, and `docusystem doctor` prints it again from the config.
 
 1. **Pages source.** Repository settings, Pages, Build and deployment, Source: **GitHub Actions**.
-2. **Custom domain.** The same page, Custom domain: the `domain` of `docusystem.config.json`. It is the repository name with hyphens, never the slug's underscores. Tick **Enforce HTTPS** once GitHub has issued the certificate.
-3. **DNS.** Add `CNAME <label> -> avunu.github.io`, where `<label>` is the domain's first label. Keep it DNS only (no proxy) until the certificate exists.
-4. **Enable the site.** Set the repository variable `DOCS_SITE_ENABLED` to `true` (Settings, Secrets and variables, Actions, Variables), or:
+2. **Verify the domain, once for the organization.** Organization settings, Pages, Add a domain: `avunu.net`, and add the TXT record `_github-pages-challenge-Avunu.avunu.net` that GitHub shows. This is a security measure, not a convenience: it covers every immediate subdomain, so no other GitHub account can claim `<label>.avunu.net` (see [When a site is retired](#when-a-site-is-retired)). Do it before the first DNS record below; it is not repeated per repository.
+3. **Custom domain.** Repository settings, Pages, Custom domain: the `domain` of `docusystem.config.json`. It is the repository name with hyphens, never the slug's underscores. Tick **Enforce HTTPS** once GitHub has issued the certificate.
+4. **DNS.** Add `CNAME <label> -> avunu.github.io`, where `<label>` is the domain's first label. Keep it DNS only (no proxy) until the certificate exists.
+5. **Enable the site.** Set the repository variable `DOCS_SITE_ENABLED` to `true` (Settings, Secrets and variables, Actions, Variables), or:
 
    ```bash
    gh variable set DOCS_SITE_ENABLED --body true --repo <OWNER>/<REPO>
@@ -96,10 +97,19 @@ None of this can be done by a pull request. `docusystem init` prints it with you
 
    Until it is set, `docs-publish.yml` only builds and checks.
 
-5. **Protect the default branch.** Every push to it publishes. Require a pull request and the repository's own CI check, so that nothing reaches the site without a review.
-6. **List the site in the catalog.** In avunu.net's catalog entry for the project, set `docs: https://<domain>`. The project switcher of every docs site then links to it.
+6. **Protect the default branch.** Every push to it publishes. Require a pull request and the repository's own CI check, so that nothing reaches the site without a review.
+7. **List the site in the catalog.** In avunu.net's catalog entry for the project, set `docs: https://<domain>`. The project switcher of every docs site then links to it.
 
-Optionally, verify `avunu.net` for the GitHub organization (Settings, Pages) so that no other account can claim a subdomain.
+## When a site is retired
+
+The CNAME of step 4 keeps pointing `<label>.avunu.net` at GitHub for as long as it exists, whatever the repository does. If the repository's Pages site is unpublished, or the repository is renamed (the domain is derived from the name), archived or deleted, while the record remains, the name is dangling: with no verified domain, another GitHub account can add `<label>.avunu.net` as the custom domain of its own Pages site and serve its own content on a subdomain of `avunu.net`. The verification of step 2 prevents that, and the order below removes the cause:
+
+1. Delete the `CNAME <label> -> avunu.github.io` record first, or in the same change.
+2. Remove the custom domain in the repository's Pages settings, or unpublish Pages, and delete the `DOCS_SITE_ENABLED` variable.
+3. Remove the `docs:` line from the project's avunu.net catalog entry, so that the project switcher stops linking to a site that is gone.
+4. Only then rename, archive or delete the repository.
+
+When a rename changes the domain, treat the old name as retired and the new one as a new site: it needs its own record, and the old record needs deleting.
 
 ## Dependabot
 

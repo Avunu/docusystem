@@ -82,13 +82,14 @@ Still in `docs-site/`, this runs the maintainer checklist as far as a clone can 
 Once per repository, none of it possible from a pull request; `init` and `doctor` print the same list with your values filled in:
 
 1. GitHub Pages source: GitHub Actions.
-2. The custom domain, with Enforce HTTPS once the certificate exists.
-3. DNS: a `CNAME` from the domain's first label to `avunu.github.io` (DNS only until the certificate exists).
-4. The repository variable `DOCS_SITE_ENABLED` set to `true`.
-5. Branch protection on the default branch, because every push to it publishes.
-6. A `docs: https://<domain>` line in the project's avunu.net catalog entry.
+2. The domain `avunu.net` verified for the GitHub organization, once and before any DNS record, so that no other account can claim the subdomain if the site is ever unpublished while its record remains.
+3. The custom domain, with Enforce HTTPS once the certificate exists.
+4. DNS: a `CNAME` from the domain's first label to `avunu.github.io` (DNS only until the certificate exists).
+5. The repository variable `DOCS_SITE_ENABLED` set to `true`.
+6. Branch protection on the default branch, because every push to it publishes.
+7. A `docs: https://<domain>` line in the project's avunu.net catalog entry.
 
-The details, and why each one is needed, are in [Publishing](publishing.md).
+The details, and why each one is needed, are in [Publishing](publishing.md). When a site is retired, delete its `CNAME` first: see [When a site is retired](publishing.md#when-a-site-is-retired).
 
 ## Humans keep a few things
 

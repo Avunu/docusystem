@@ -356,6 +356,9 @@ describe("init: where it runs", () => {
     expect(out).toContain("Chosen for you (pass the option to change it):");
     expect(out).toContain("A maintainer still has to:");
     expect(out).toContain("CNAME frappe-nix -> avunu.github.io");
+    // the domain is verified for the organization, and the end of the site is covered
+    expect(out).toContain("Verify avunu.net once for the Avunu GitHub organization");
+    expect(out).toContain("when the site is retired or its domain changes");
     expect(out.trimEnd().split("\n").at(-1)).toBe(
       "Next: cd docs-site && npm install && npm run check",
     );

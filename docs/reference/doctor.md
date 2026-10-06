@@ -8,7 +8,7 @@ tags: [reference, doctor, checklist]
 
 `docusystem doctor` is the maintainer checklist as far as a clone of the repository shows it. It works offline: nothing touches the network. Each finding is `ok`, `warning` or `error`, and any error makes the exit code 1; warnings alone exit 0. `--json` prints the findings as JSON.
 
-After the checks it prints the GitHub and DNS values a maintainer still has to set, from the config: the Pages source, the custom domain, the DNS record, the repository variable `DOCS_SITE_ENABLED`, branch protection and the `docs:` line of the avunu.net catalog entry. Those need a person with access, so `doctor` cannot check them. See [Publishing](../guide/publishing.md#what-a-maintainer-sets-once).
+After the checks it prints the GitHub and DNS values a maintainer still has to set, from the config: the Pages source, the domain verification for the organization, the custom domain, the DNS record, the repository variable `DOCS_SITE_ENABLED`, branch protection and the `docs:` line of the avunu.net catalog entry, and what to delete when the site is retired. Those need a person with access, so `doctor` cannot check them. See [Publishing](../guide/publishing.md#what-a-maintainer-sets-once).
 
 Run it after `init`, after every upgrade, and when a Dependabot pull request for the docs site looks odd.
 
