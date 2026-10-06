@@ -157,6 +157,22 @@ describe("renderSummary", () => {
     );
   });
 
+  test("the jx setting is an override: it is listed, alone or after files, and 'none' is not claimed", () => {
+    const jx = 'the "jx" setting of docusystem.config.json (merged into project.json)';
+    expect(renderSummary({ ...base, overrides: { shadowed: [], added: [], jx: true } })).toContain(
+      `- overrides: ${jx}\n`,
+    );
+    expect(
+      renderSummary({
+        ...base,
+        overrides: { shadowed: [], added: ["pages/about.json"], jx: true },
+      }),
+    ).toContain(`- overrides: pages/about.json (added), ${jx}\n`);
+    expect(renderSummary({ ...base, overrides: { shadowed: [], added: [], jx: false } })).toContain(
+      "- overrides: none\n",
+    );
+  });
+
   test("at most twenty problems are listed, and the rest is counted", () => {
     const problems = Array.from({ length: 25 }, (_, i) => ({
       level: "error" as const,

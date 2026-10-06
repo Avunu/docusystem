@@ -148,6 +148,27 @@ describe("a clean build", () => {
     );
   });
 
+  test("counts the jx setting among the overrides, alone or beside overridden files", async () => {
+    const jx = { $head: [{ tagName: "meta", attributes: { name: "author", content: "Avunu" } }] };
+    const alone = makeWorld({ config: { jx } });
+    const { out } = await run(alone);
+    expect(out).toContain(
+      'build: overrides: the "jx" setting of docusystem.config.json (merged into project.json)',
+    );
+    expect(out).not.toContain("build: overrides: none (every file comes from the package)");
+
+    const both = makeWorld({ config: { jx } });
+    both.added = ["pages/about.json"];
+    expect((await run(both)).out).toContain(
+      'build: overrides: pages/about.json (added), the "jx" setting of docusystem.config.json (merged into project.json)',
+    );
+  });
+
+  test("an empty jx setting changes nothing and is not an override", async () => {
+    const { out } = await run(makeWorld({ config: { jx: {} } }));
+    expect(out).toContain("build: overrides: none (every file comes from the package)");
+  });
+
   test("passes the strictness, the branch and the catalog options on", async () => {
     const world = makeWorld();
     await run(world, {

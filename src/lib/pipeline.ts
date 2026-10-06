@@ -32,6 +32,7 @@ import { jxCli } from "./jx.js";
 import { formatIssue, lintDocs } from "./lint.js";
 import { acquireLock } from "./lock.js";
 import { writeNav } from "./nav.js";
+import { hasJxFragment, JX_FRAGMENT } from "./overrides.js";
 import { runPostbuild } from "./postbuild.js";
 import { preflight } from "./preflight.js";
 import { stageSite } from "./stage.js";
@@ -489,6 +490,7 @@ export async function runPipelineWith(
     const overrides = [
       ...assembly.shadowed.map((file) => `${file} (replaces the package's file)`),
       ...assembly.added.map((file) => `${file} (added)`),
+      ...(hasJxFragment(config) ? [JX_FRAGMENT] : []),
     ];
     log(
       `build: overrides: ${overrides.length === 0 ? "none (every file comes from the package)" : overrides.join(", ")}`,

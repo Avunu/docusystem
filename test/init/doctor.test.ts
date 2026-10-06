@@ -672,6 +672,35 @@ describe("overrides", () => {
     expect(overrideFindings).not.toHaveBeenCalled();
   });
 
+  test("the jx setting is not 'none': it is a warning, with or without an overrides folder", async () => {
+    const root = await initialisedRepo();
+    rewrite(root, "docs-site/docusystem.config.json", (text) =>
+      text.replace(
+        /\n}\n$/,
+        ',\n  "jx": { "$head": [{ "tagName": "meta", "attributes": { "name": "author", "content": "Avunu" } }] }\n}\n',
+      ),
+    );
+    const message =
+      'overrides: the "jx" setting of docusystem.config.json (merged into project.json) is outside semver and does not follow package updates: check the pages it changes after each upgrade';
+    expect(at(root, "error")).toEqual([]);
+    expect(warnings(root)).toContain(message);
+    expect(all(root).map((f) => f.message)).not.toContain(
+      "overrides: none; the site follows the package",
+    );
+
+    mkdirSync(join(root, "docs-site/overrides/components"), { recursive: true });
+    writeFileSync(join(root, "docs-site/overrides/components/docs-footer.json"), "{}\n");
+    vi.mocked(overrideFindings).mockReturnValueOnce([
+      { level: "ok", message: "overrides/components/docs-footer.json is current" },
+    ]);
+    const findings = all(root);
+    expect(findings).toContainEqual({ level: "warning", message });
+    expect(findings).toContainEqual({
+      level: "ok",
+      message: "overrides/components/docs-footer.json is current",
+    });
+  });
+
   test("what the assemble package finds is reported with its levels", async () => {
     const root = await withOverrides();
     vi.mocked(overrideFindings).mockReturnValueOnce([

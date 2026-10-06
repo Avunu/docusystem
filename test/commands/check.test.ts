@@ -227,6 +227,19 @@ describe("docusystem check --ci", () => {
     expect(markdown).toContain("- overrides: none");
   });
 
+  test("the summary lists the jx setting among the overrides", async () => {
+    const jx = { $head: [{ tagName: "meta", attributes: { name: "author", content: "Avunu" } }] };
+    world = makeWorld({ config: { jx } });
+    holder.deps = world.deps;
+    const { summary, output } = files();
+    await check(["--ci"], { GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: output });
+    const markdown = readFileSync(summary, "utf8");
+    expect(markdown).toContain(
+      '- overrides: the "jx" setting of docusystem.config.json (merged into project.json)',
+    );
+    expect(markdown).not.toContain("- overrides: none");
+  });
+
   test("GITHUB_ACTIONS=true implies --ci", async () => {
     const { summary, output } = files();
     await check([], {
