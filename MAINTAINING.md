@@ -65,6 +65,19 @@ Steps 1 to 3 are settings, not code. Do them before the release pull request is 
 
 Requirements npm documents for trusted publishing: npm CLI 11.5.1 or newer and Node 22.14 or newer on the runner (Node 24 ships npm 11), GitHub-hosted runners and `id-token: write` on the publishing job. The npm CLI tries the OIDC exchange first whenever it runs in GitHub Actions with that permission, and falls back to a configured token only when the exchange fails.
 
+**Check the trusted publisher before merging the release pull request (step 4).** No pull request and no agent can read the record: `npm trust list` asks for interactive two-factor authentication, and nothing else shows it until a publish runs. Run `npm trust list @avunu/docusystem` yourself, or open the package's Settings, Trusted publisher, on npmjs.com. It must show one GitHub Actions record with these values, because npm compares each with the OIDC token of the publishing run:
+
+| Field         | Value              | Where the run gets it                                                                                                           |
+| ------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| repository    | `Avunu/docusystem` | the repository that runs the workflow                                                                                           |
+| workflow file | `release.yml`      | the file name of the running workflow (this file; the publish step cannot move to another file)                                 |
+| environment   | `npm`              | `environment: npm` of the `publish` job                                                                                         |
+| permissions   | `publish`          | the step runs `npm publish`; npm documents `stage publish` (`--allow-stage-publish`) as a separate permission, not a substitute |
+
+Look at the permissions line first if the placeholder was published through the staged flow (`npm stage publish`): a record created with `--allow-stage-publish` alone does not allow the direct publish that `release.yml` runs. The registry supports one record per package, so to correct it run `npm trust revoke @avunu/docusystem --id=<id>` with the id that `npm trust list` printed, then the `npm trust github` command of step 2.
+
+**If the publish step fails with ENEEDAUTH.** At its default log level npm 11 reports a refused or skipped OIDC exchange only as `ENEEDAUTH ... This command requires you to be logged in to https://registry.npmjs.org/`. That one error covers a record that does not match, a record without the `publish` permission, and a job without `id-token: write`. The registry's reason is a verbose-level line, `npm verbose oidc Failed token exchange request with body message: ...`, so the publish step runs `npm publish` with `--loglevel verbose` (npm does not log the OIDC token or the exchanged token there, and GitHub masks `NPM_TOKEN`) and ends with an error annotation that points here. Read that line in the job log, correct the record on npmjs.com, then use "Re-run failed jobs" on the run: the tag and the GitHub Release already exist, and the step skips a version that npm already has.
+
 ## GitHub settings
 
 State of `Avunu/docusystem` read on 2026-10-06: public; auto-merge off; secret scanning, push protection, Dependabot security updates and private vulnerability reporting disabled; no rulesets and no environments; default workflow permission `read`; "Actions may create and approve pull requests" on (release-please needs it).

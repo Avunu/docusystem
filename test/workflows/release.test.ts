@@ -1,10 +1,14 @@
 // The release pipeline (section 8.2 of the architecture decision record): release.yml, the
 // release-please configuration it reads, and the pull request title rule that keeps release-please
 // from silently skipping a commit.
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Ajv } from "ajv";
 import { describe, expect, test } from "vitest";
 import { TYPES } from "../../scripts/check-pr-title.mjs";
-import { readJson, workflow, type Step } from "./helpers.js";
+import { tempDir } from "../support/index.js";
+import { hasBash, readJson, readText, runOf, workflow, type Step } from "./helpers.js";
 
 const release = workflow("release.yml");
 const jobs = release.doc.jobs;
@@ -178,5 +182,132 @@ describe("release-please configuration", () => {
     const action = stepWith(please?.steps, "googleapis/release-please-action@");
     expect(action?.with?.["config-file"]).toBe("release-please-config.json");
     expect(action?.with?.["manifest-file"]).toBe(".release-please-manifest.json");
+  });
+});
+
+// The trusted publisher on npmjs.com cannot be read from a pull request (`npm trust list` needs
+// interactive two-factor authentication), and when its record does not match the run, npm 11 reports
+// only ENEEDAUTH at its default log level. These tests keep the two things that can be kept in this
+// repository: the publish step explains a refusal, and the record the runbook asks for is the one this
+// workflow presents.
+describe("a refused trusted publisher explains itself", () => {
+  const PUBLISH_STEP = "Publish (skipped when the version already exists)";
+  const script = runOf(release, "publish", PUBLISH_STEP);
+
+  /** Runs the publish step's script with a recording stand-in for npm; `publishStatus` is what `npm publish` exits with. */
+  function runPublish(o: { onNpm: boolean; publishStatus: number }) {
+    const dir = tempDir();
+    const bin = join(dir, "bin");
+    const calls = join(dir, "calls.txt");
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "@avunu/docusystem", version: "0.1.0" }),
+    );
+    // `npm view` exits 0 when the version is on npm; `npm publish` exits as told, with npm's own words on a refusal.
+    const fake = [
+      "#!/bin/sh",
+      'echo "$*" >> "$CALLS"',
+      'case "$1" in',
+      `  view) exit ${o.onNpm ? 0 : 1} ;;`,
+      "  publish)",
+      `    if [ ${o.publishStatus} -ne 0 ]; then`,
+      '      echo "npm error code ENEEDAUTH" >&2',
+      '      echo "npm error need auth This command requires you to be logged in to https://registry.npmjs.org/" >&2',
+      "    fi",
+      `    exit ${o.publishStatus} ;;`,
+      "esac",
+      "",
+    ].join("\n");
+    const npm = join(bin, "npm");
+    mkdirSync(bin);
+    writeFileSync(npm, fake);
+    chmodSync(npm, 0o755);
+    const result = spawnSync(
+      "bash",
+      ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
+      {
+        cwd: dir,
+        env: {
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+          VERSION: "0.1.0",
+          CALLS: calls,
+        },
+        encoding: "utf8",
+      },
+    );
+    const recorded = existsSync(calls) ? readFileSync(calls, "utf8") : "";
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      calls: recorded.split("\n").filter((line) => line !== ""),
+    };
+  }
+
+  test.skipIf(!hasBash)(
+    "npm publish runs at the verbose level (where npm prints the registry's reason), npm view does not",
+    () => {
+      const { status, calls } = runPublish({ onNpm: false, publishStatus: 0 });
+      expect(status).toBe(0);
+      expect(calls).toEqual([
+        "view @avunu/docusystem@0.1.0 version",
+        "publish --provenance --access public --loglevel verbose",
+      ]);
+    },
+  );
+
+  test.skipIf(!hasBash)(
+    "a failed publish fails the step and says where to look: the verbose oidc line, the record, the runbook",
+    () => {
+      const { status, stdout, stderr } = runPublish({ onNpm: false, publishStatus: 1 });
+      expect(status).toBe(1);
+      // npm's own output is untouched.
+      expect(stderr).toContain("ENEEDAUTH");
+      const annotations = stdout.split("\n").filter((line) => line.startsWith("::error"));
+      expect(annotations).toHaveLength(1);
+      const message = annotations[0] ?? "";
+      // One line (a workflow command ends at a line break), with a title.
+      expect(message).toMatch(/^::error title=[^:,]+::/);
+      expect(message).toContain("ENEEDAUTH");
+      expect(message).toContain("npm verbose oidc");
+      expect(message).toContain("release.yml");
+      expect(message).toContain("environment npm");
+      expect(message).toContain("permission publish");
+      expect(message).toContain("MAINTAINING.md");
+    },
+  );
+
+  test.skipIf(!hasBash)(
+    "a version that is already on npm is not published, and raises no error",
+    () => {
+      const { status, stdout, calls } = runPublish({ onNpm: true, publishStatus: 1 });
+      expect(status).toBe(0);
+      expect(stdout).toContain("is already on npm; nothing to publish");
+      expect(stdout).not.toContain("::error");
+      expect(calls).toEqual(["view @avunu/docusystem@0.1.0 version"]);
+    },
+  );
+
+  test("the runbook's `npm trust github` command is the record this run presents to npm", () => {
+    // What npm checks, from the OIDC token of the publish job: the repository, the workflow file name
+    // and the GitHub environment (the claims `repository`, `workflow_ref` and `environment`).
+    const pkg = readJson<{ repository: { url: string } }>("package.json");
+    const repository = /github\.com[/:](.+?)(?:\.git)?$/.exec(pkg.repository.url)?.[1];
+    const environment = publish?.environment;
+    expect(repository).toBe("Avunu/docusystem");
+    expect(environment).toBe("npm");
+    const runbook = readText("MAINTAINING.md");
+    const command = /^\s*npm trust github (\S+) (.*)$/m.exec(runbook);
+    expect(command, "MAINTAINING.md has the npm trust github command").not.toBeNull();
+    const flags = (command?.[2] ?? "").split(/\s+/);
+    const value = (flag: string): string | undefined => flags[flags.indexOf(flag) + 1];
+    expect(command?.[1]).toBe("@avunu/docusystem");
+    expect(value("--repo")).toBe(repository);
+    expect(value("--file")).toBe(release.file);
+    expect(value("--env")).toBe(environment);
+    // A direct `npm publish` needs the `publish` permission; `stage publish` alone refuses it.
+    expect(flags).toContain("--allow-publish");
+    expect(script).toContain("npm publish ");
+    expect(script).not.toContain("npm stage");
   });
 });

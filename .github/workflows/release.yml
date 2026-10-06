@@ -113,5 +113,13 @@ jobs:
           if npm view "$name@$VERSION" version > /dev/null 2>&1; then
             echo "$name@$VERSION is already on npm; nothing to publish"
           else
-            npm publish --provenance --access public
+            # When the OIDC exchange is refused (the trusted publisher on npmjs.com does not match this
+            # run, or does not allow a direct publish) or skipped (no id-token permission), npm only
+            # prints ENEEDAUTH, "log in". The registry's actual reason is a verbose-level line
+            # (`npm verbose oidc ...`), so this one command logs at verbose. That does not expose a
+            # secret: npm does not log the OIDC token or the exchanged token, and GitHub masks NPM_TOKEN.
+            if ! npm publish --provenance --access public --loglevel verbose; then
+              echo "::error title=npm publish failed::If the log says ENEEDAUTH, npm's OIDC token exchange was refused or skipped: the reason is the 'npm verbose oidc' line. Compare the trusted publisher on npmjs.com with this run (repository Avunu/docusystem, workflow release.yml, environment npm, permission publish; see MAINTAINING.md), then re-run the failed publish job."
+              exit 1
+            fi
           fi
