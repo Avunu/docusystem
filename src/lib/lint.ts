@@ -6,9 +6,13 @@
 //            one vanishes, as does an image's alt text
 //   error    footnotes ([^1]): the marker and the note both vanish
 //   error    frontmatter that is not valid YAML: the page cannot be built
-//   warning  inline HTML elements (<kbd>, <b>, <sub>, <a href> around text): the text stays but sits
-//            outside the element, so the formatting or the link is lost
-//   warning  <a> around an <img> in a paragraph (badges): the image stays, the link is lost
+//   error    <a href> around text, or around an <img> (a badge), in a paragraph: Jx writes an empty
+//            link and puts the text or the image after it, and the output assertion "no page has an
+//            empty link" then fails the build in every mode, --lenient included. (An error here, so a
+//            strict build says so with file:line before it runs Jx; a lenient one prints it as a
+//            warning and the assertion that follows is what fails it.)
+//   warning  inline HTML elements (<kbd>, <b>, <sub>, an <a> without href): the text stays but sits
+//            outside the element, so the formatting is lost
 //   warning  an HTML block that a blank line ends before its closing tag (<div align="center">,
 //            <details>): the wrapper is left empty and its content follows it
 //   warning  task-list checkboxes (- [ ]) are shown as plain list items
@@ -17,8 +21,8 @@
 //
 // Errors fail a strict build (CI); warnings are printed. Step 6 of the pipeline runs this over the
 // original docs/ folder (not the staged copy), so file names and line numbers are the author's.
-// The empty-link problem (a raw <a href> that Jx emits as `<a href></a>text`) is caught by the output
-// assertions of WP4, not here.
+// The empty link itself (Jx emits a raw <a href> as `<a href></a>text`) is caught by the output
+// assertions of WP4, which is why the two <a href> rules above are errors.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isExcluded, isPublished } from "./docs.js";
@@ -36,6 +40,27 @@ const INLINE =
   /<(kbd|b|i|em|strong|u|s|sub|sup|span|mark|small|abbr|del|ins|code|q|cite|var|samp|font|big|tt|a)(?=[\s/>])[^>]{0,2000}>/gi;
 /** What follows an `<a ...>` that wraps an image (a badge). Sticky: it is tried at a given offset. */
 const BADGE_TAIL = /\s*<img\b[^>]{0,2000}>\s*<\/a>/iy;
+/**
+ * An `<a ...>` opening tag the way a browser reads it: a quoted value may hold a `>`. Sticky: it is
+ * tried at a given offset. Each alternative starts with a different character, so the bounded repeat
+ * cannot be matched two ways.
+ */
+const ANCHOR_TAG = /<a((?:\s(?:[^>"']|"[^"]*"|'[^']*'){0,2000})?)>/iy;
+/** An `href` attribute in the attribute text of a tag whose quoted values are already blanked. */
+const HREF_ATTRIBUTE = /(?:^|\s)href(?=[\s=/>]|$)/i;
+/**
+ * Whether the `<a ...>` tag at `index` of `prose` is a link (it has an `href`): `<a id>` and
+ * `<a name>` anchors are not, and Jx leaves them alone. `tag` is the tag as INLINE matched it, used
+ * when the tag is not closed in the way a browser needs.
+ */
+function isLink(prose: string, index: number, tag: string): boolean {
+  ANCHOR_TAG.lastIndex = index;
+  const attributes = ANCHOR_TAG.exec(prose)?.[1] ?? tag.slice(2, -1);
+  return HREF_ATTRIBUTE.test(attributes.replaceAll(/"[^"]*"|'[^']*'/g, '""'));
+}
+/** Why the two `<a href>` rules are errors, said the same way in both. */
+const EMPTY_LINK =
+  "which fails the build in every mode, --lenient included (Jx writes an empty link and puts what was inside it after the link)";
 /**
  * A table's delimiter row (`|:--|--:|`): cells of two or more dashes, optional colons, pipes between,
  * optionally at both ends. Written so that no two parts can take the same whitespace, which keeps a
@@ -167,24 +192,25 @@ export function lintMarkdown(source: string, file: string, skip = 0): LintIssue[
     const tags = new Set<string>();
     for (const m of prose.matchAll(INLINE)) {
       const tag = m[1]!.toLowerCase();
-      if (tag === "a") {
-        BADGE_TAIL.lastIndex = (m.index ?? 0) + m[0].length;
-        const wraps = BADGE_TAIL.test(prose);
-        if (tags.has(wraps ? "a-badge" : "a")) continue;
-        tags.add(wraps ? "a-badge" : "a");
-        add(
-          line.index,
-          "warning",
-          wraps ? "html-badge" : "html-inline",
-          wraps
-            ? "An <a> around an <img> in a paragraph loses its link (the image stays). Write it as Markdown: [![alt](image)](url)."
-            : "An inline <a href> keeps its text but loses the link. Write it as Markdown: [text](url).",
-        );
-      } else {
+      if (tag !== "a" || !isLink(prose, m.index ?? 0, m[0])) {
         tags.add(tag);
+        continue;
       }
+      BADGE_TAIL.lastIndex = (m.index ?? 0) + m[0].length;
+      const wraps = BADGE_TAIL.test(prose);
+      const kind = wraps ? "a-badge" : "a-link";
+      if (tags.has(kind)) continue;
+      tags.add(kind);
+      add(
+        line.index,
+        "error",
+        wraps ? "html-badge" : "html-inline",
+        wraps
+          ? `An <a href> around an <img> in a paragraph loses its link, ${EMPTY_LINK}. Write it as Markdown: [![alt](image)](url).`
+          : `An inline <a href> loses its link, ${EMPTY_LINK}. Write it as Markdown: [text](url).`,
+      );
     }
-    const elements = [...tags].filter((tag) => tag !== "a" && tag !== "a-badge");
+    const elements = [...tags].filter((tag) => tag !== "a-link" && tag !== "a-badge");
     if (elements.length > 0) {
       add(
         line.index,

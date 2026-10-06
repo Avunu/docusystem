@@ -43,7 +43,7 @@ A failed strict build leaves the previous `<site>/dist` untouched.
 
 - Every component file of the root was emitted as `components/<name>.js`.
 - No registered custom element is left empty (not rendered).
-- No page has an empty link: an `<a href>` with no text, image or `aria-label`.
+- No page has an empty link: an `<a href>` with no text, image or `aria-label`. A raw HTML anchor in the Markdown is the usual cause, and step 6 reports it as a lint error with its file and line.
 - Exactly one `<h1>` per page.
 - No unevaluated template text in the output: a dollar sign, an opening brace and the word `state`, which would mean a page template was not evaluated.
 - `CNAME` equals `domain`.

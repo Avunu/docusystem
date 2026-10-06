@@ -104,7 +104,7 @@ The conventions work on GitHub, in Obsidian and on the site at once.
 - Callouts are GitHub alerts: `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`.
 - Link to pages by file, relative to the current file, with `%20` for spaces. A link to a repository file that is not a page becomes a GitHub link. A link to a page that does not exist fails the CI build.
 - Give every code block a language. A language the highlighter does not know is shown as plain code, with a warning.
-- Reference-style links and footnotes are lint errors (the site would lose text). Inline HTML, task lists, table alignment and `${...}` in a link address are warnings. A raw `<a href>` additionally trips the empty-link assertion.
+- Reference-style links and footnotes are lint errors (the site would lose text), and so is a raw `<a href>` in a paragraph, around text or an image: Jx leaves an empty link, which fails every build, `--lenient` included. Inline HTML, task lists, table alignment and `${...}` in a link address are warnings.
 
 `CI=true` makes every document problem fail the build, and `check` is always strict. While you work through a first pass, `docusystem build --lenient` reports them as warnings. See [Writing documentation](docs/guide/writing-docs.md).
 
@@ -176,7 +176,7 @@ The workflows and the package share one integer, the workflow contract. The CLI 
 | "K document problem(s) above fail the build"                                                      | A strict build collects every document problem and publishes nothing. Fix them, or use `docusystem build --lenient` locally while you work through them |
 | "Sharp is required for image optimization but failed to load" (`libstdc++`), for example on NixOS | Set `"images": "off"` in the config, or provide the library with `LD_LIBRARY_PATH` for the command                                                      |
 | `stage: docs/x.md is a symbolic link outside the repository: not published`                       | Only symbolic links whose target is inside the repository are followed. Copy the file in; under strict the skip is an error                             |
-| An assertion fails: no page has an empty link                                                     | A raw HTML `<a href>` produced an empty link. Write `[text](url)`                                                                                       |
+| An assertion fails: no page has an empty link                                                     | A raw HTML `<a href>` produced an empty link. `docusystem lint` shows where; write `[text](url)`                                                        |
 | `init` exits 1 naming `--workflow-sha`                                                            | The tag of the installed version could not be resolved (offline, or no such tag). Pass the commit                                                       |
 
 Looking inside a build: each build writes `docs-site/.docusystem/manifest.json` and `jx.log` and keeps the assembled Jx project in `docs-site/.docusystem/site/`. `docusystem info` prints the exact command to run Jx by hand, and `docusystem jx validate` runs the pinned Jx CLI on the assembled project. Jx Studio and `jx dev` are not supported on it: the Markdown lives outside the Jx root, `jx dev` needs the optional server package and Bun, and it skips the post-build fixes. `docusystem dev` serves exactly what deploys. See [Troubleshooting](docs/guide/troubleshooting.md).

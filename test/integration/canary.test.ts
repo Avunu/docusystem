@@ -152,7 +152,7 @@ describe.skipIf(waiting.length > 0)(
         expect(all).toMatch(/lint: error: .*README\.md:\d+ .*Reference-style links/); // the reference link
         expect(all).toMatch(/lint: error: .*README\.md:\d+ .*Footnotes/); // the footnote
         expect(all).toMatch(/lint: warning: .*tasks\.md:\d+ .*Task-list/); // the task list (a warning)
-        expect(all).toMatch(/lint: warning: .*README\.md:\d+ .*<a href>/); // the raw anchor (a warning)
+        expect(all).toMatch(/lint: error: .*README\.md:\d+ .*<a href>/); // the raw anchor (an error: it would be an empty link)
         expect(all).toMatch(/docusystem: \d+ document problem\(s\) above fail the build\./);
       });
 
@@ -194,7 +194,13 @@ describe.skipIf(waiting.length > 0)(
           env: jxEnv(),
         });
         expect(code, `${stdout}\n${stderr}`).toBe(1);
-        expect(`${stdout}\n${stderr}`).toMatch(/assert: FAIL/);
+        const all = `${stdout}\n${stderr}`;
+        // The lint line (a warning when lenient) names the file and line; the assertion that fails the
+        // build names the page and points at `docusystem lint`.
+        expect(all).toMatch(/lint: warning: .*README\.md:\d+ .*<a href>/);
+        expect(all).toMatch(
+          /assert: FAIL: links with nothing inside: \/docs\/ .*`docusystem lint`/,
+        );
         expect(existsSync(repo.paths.dist)).toBe(false);
       });
 
@@ -204,7 +210,8 @@ describe.skipIf(waiting.length > 0)(
         expect(code).toBe(1);
         expect(stdout).toMatch(/^error: .*README\.md:\d+ .*Reference-style links/m);
         expect(stdout).toMatch(/^error: .*README\.md:\d+ .*Footnotes/m);
-        expect(stdout).toMatch(/^lint: 2 error\(s\), \d+ warning\(s\)$/m);
+        expect(stdout).toMatch(/^error: .*README\.md:\d+ .*<a href>/m); // the raw anchor
+        expect(stdout).toMatch(/^lint: 3 error\(s\), \d+ warning\(s\)$/m);
       });
 
       test("check --ci annotates what it found, with the file and line of the lint errors", async () => {
