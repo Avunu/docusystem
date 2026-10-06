@@ -1,0 +1,15 @@
+  # The documentation site (@@SITE@@/): @avunu/docusystem and the packages it brings. A person reviews
+  # these pull requests: a merge to the default branch publishes the site (see the auto-merge workflow, if any).
+  - package-ecosystem: npm
+    directory: /@@SITE@@
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      exclude:
+        - "@avunu/docusystem"
+    groups:
+      docs-site-packages:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
