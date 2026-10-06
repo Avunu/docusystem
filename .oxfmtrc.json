@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    "CHANGELOG.md",
+    "dist",
+    "node_modules",
+    "package-lock.json",
+    "site",
+    "verify",
+    "examples/*/docs-site/package-lock.json",
+    ".docusystem",
+    "test/fixtures",
+    "test/**/fixtures"
+  ]
+}

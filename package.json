@@ -1,0 +1,79 @@
+{
+  "name": "@avunu/docusystem",
+  "version": "0.0.0",
+  "description": "The documentation system shared by every Avunu open-source project: a CLI that builds a project's Markdown into its docs site, and the reusable GitHub Actions workflows that check and deploy it.",
+  "keywords": [
+    "avunu",
+    "docs",
+    "documentation",
+    "jx",
+    "markdown",
+    "static-site"
+  ],
+  "homepage": "https://github.com/Avunu/docusystem#readme",
+  "bugs": "https://github.com/Avunu/docusystem/issues",
+  "license": "MIT",
+  "author": "Avunu LLC (https://avunu.net)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Avunu/docusystem.git"
+  },
+  "bin": {
+    "docusystem": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "site",
+    "scaffold",
+    "config.schema.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config.schema.json": "./config.schema.json",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "npm run build",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "check:pack": "node scripts/check-pack.mjs",
+    "check:publint": "publint --strict",
+    "check:types": "attw --pack . --profile esm-only",
+    "test:pack": "node scripts/test-pack.mjs",
+    "sync-catalog": "node scripts/sync-catalog.mjs"
+  },
+  "dependencies": {
+    "@jxsuite/compiler": "5.0.0",
+    "@jxsuite/parser": "2.0.0",
+    "@jxsuite/runtime": "4.0.3",
+    "@jxsuite/search": "0.4.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@types/node": "^22.19.0",
+    "ajv": "8.20.0",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "publint": "0.3.25",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

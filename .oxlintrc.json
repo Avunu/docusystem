@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "site",
+    "verify",
+    "examples",
+    ".docusystem",
+    "test/fixtures",
+    "test/**/fixtures"
+  ],
+  "plugins": ["typescript", "oxc", "import"],
+  "overrides": [
+    {
+      "files": ["test/**"],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    }
+  ]
+}
