@@ -490,7 +490,7 @@ export function planMigration(cloneArg, options) {
 
   const ignorePath = inSite(".gitignore");
   const ignoreBefore = readText(at(".gitignore"));
-  const scaffoldIgnore = helpers.readScaffold("gitignore");
+  const scaffoldIgnore = lf(helpers.readScaffold("gitignore")); // a Windows checkout may have made it CRLF
   if (ignoreBefore === null) {
     put(ignorePath, null, scaffoldIgnore, "node_modules/, dist/, .docusystem/");
   } else if (sha256File(at(".gitignore")) === legacy.files[".gitignore"]) {
