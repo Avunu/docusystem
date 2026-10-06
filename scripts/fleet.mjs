@@ -42,6 +42,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -491,9 +492,11 @@ async function main(argv) {
     return 0;
   }
 
-  const work =
-    options.work ?? mkdtempSync(join(process.env.DOCUSYSTEM_TMP ?? tmpdir(), "docusystem-fleet-"));
-  mkdirSync(work, { recursive: true });
+  if (options.work !== undefined) mkdirSync(options.work, { recursive: true });
+  // a real path: the command line prints the paths it works with, and on macOS /var is a link to /private/var
+  const work = realpathSync(
+    options.work ?? mkdtempSync(join(process.env.DOCUSYSTEM_TMP ?? tmpdir(), "docusystem-fleet-")),
+  );
   let code = 0;
   try {
     // the package, packed once: init runs from it and every repository installs it
