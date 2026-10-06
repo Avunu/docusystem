@@ -5,7 +5,9 @@ name: Catalog
 # avunu.net at build time; this workflow keeps the bundled copy current. Weekly it runs
 # `npm run sync-catalog`; when the file changed it pushes a branch fix/catalog-<date> and opens a pull
 # request titled `fix(catalog): refresh the bundled project catalog`. A person merges it and the next
-# release carries the new catalog to every site as a patch.
+# release carries the new catalog to every site as a patch. The script only writes a catalog that passes
+# the contract of src/lib/catalog.ts, which includes "no `${`, markup or control character in any text":
+# the compiler evaluates a `${...}` that a page renders, so a hostile catalog would run code in every build.
 #
 # Pull requests opened with GITHUB_TOKEN start no `pull_request` workflows, so this workflow dispatches
 # ci.yml on the branch; the run reports the required `ci` check on the branch head.
@@ -103,7 +105,9 @@ jobs:
           cat > "$body" <<'BODY'
           The weekly catalog workflow fetched the live project catalog (https://avunu.net/projects.json, version 1) and the copy bundled in this package differs. The project switcher of every documentation site is built from the bundled file, so the change reaches the sites with the next release, as a patch.
 
-          Review the diff of `site/data/projects.snapshot.json`: a removed entry, or an entry whose `docs` address changed, is the thing to look at. CI is dispatched on this branch by the workflow, because a pull request opened with GITHUB_TOKEN starts no pull request workflows.
+          Review the diff of `site/data/projects.snapshot.json`: a removed entry, or an entry whose `docs` address changed, is the thing to look at. So is any text that is code or markup rather than a name: a `${...}` expression, a `<` or `>`, anything odd in a title, a slug or an address. The compiler evaluates a `${...}` in what a page renders, so one in the catalog would run code in the build of every site. The catalog contract (`validateCatalog` in `src/lib/catalog.ts`) refuses all of that, so if the diff has some, the check was bypassed: do not merge, and report it.
+
+          CI is dispatched on this branch by the workflow, because a pull request opened with GITHUB_TOKEN starts no pull request workflows.
           BODY
           gh pr create --base "$DEFAULT_BRANCH" --head "$branch" --title "$title" --body-file "$body"
           gh workflow run ci.yml --ref "$branch"

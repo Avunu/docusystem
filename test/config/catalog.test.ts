@@ -12,6 +12,7 @@ import {
   sameRepo,
   validateCatalog,
 } from "../../src/lib/catalog.js";
+import { SLUG } from "../../src/lib/config.js";
 import { packageRoot } from "../../src/lib/package-info.js";
 import { PLATFORMS } from "../../src/lib/platforms.js";
 import type { CatalogProject } from "../../src/lib/types.js";
@@ -163,6 +164,150 @@ describe("validateCatalog", () => {
       projects: [project({ platform: "x", repo: "x", docs: 1 })],
     });
     expect(problems).toHaveLength(6);
+  });
+});
+
+describe("validateCatalog: text that a page or the compiler would act on", () => {
+  const one = (over: Record<string, unknown>): string[] =>
+    validateCatalog(catalog([project(over)]));
+
+  // The compiler evaluates a `${...}` in the text that a page renders (the title, slug and links of the
+  // switcher): a catalog that held one would run code in the build of every site that bundles it.
+  test.each(["title", "summary", "license", "status", "suite", "page", "docs", "repo"])(
+    "refuses a template expression in %s",
+    (field) => {
+      const value =
+        field === "page" || field === "docs" || field === "repo"
+          ? "https://avunu.net/${process.cwd()}"
+          : "T${process.cwd()}T";
+      const problems = one({ [field]: value });
+      expect(problems).toEqual([
+        `projects[0].${field} holds a "\${" (the compiler evaluates it as an expression)`,
+      ]);
+    },
+  );
+
+  test("refuses a slug that is an expression, or has a double quote, once as a slug and once as text", () => {
+    expect(one({ slug: "${process.cwd()}" })).toEqual([
+      'projects[0]: "slug" must be lowercase letters, digits, hyphens and underscores, starting with a letter or digit',
+      'projects[0].slug holds a "${" (the compiler evaluates it as an expression)',
+    ]);
+    expect(one({ slug: 'a"b' })).toEqual([
+      'projects[0]: "slug" must be lowercase letters, digits, hyphens and underscores, starting with a letter or digit',
+    ]);
+  });
+
+  test.each(["Frappe", "a b", "-a", "_a", "a/b", "a.b", "a\nb", "é", "a\n"])(
+    "a slug is a config slug: %j is refused",
+    (slug) => {
+      expect(one({ slug }).join("\n")).toContain('"slug" must be lowercase letters');
+    },
+  );
+
+  test.each(["erpnext_taskview", "frappe-nix", "9lives", "a"])("%s is a slug", (slug) => {
+    expect(one({ slug })).toEqual([]);
+  });
+
+  test("every slug of the bundled catalog is a slug of the config", () => {
+    for (const { slug } of readBundledCatalog()) expect(slug).toMatch(SLUG);
+  });
+
+  test("refuses markup", () => {
+    expect(one({ title: "<img src=x onerror=alert(1)>" })).toEqual([
+      'projects[0].title holds a "<" or ">" (markup)',
+    ]);
+    expect(one({ summary: "a > b" })).toEqual(['projects[0].summary holds a "<" or ">" (markup)']);
+  });
+
+  test.each([
+    ["NUL", "a\u0000b"],
+    ["a tab", "a\tb"],
+    ["a line feed", "a\nb"],
+    ["escape", "a\u001b[2Jb"],
+    ["DEL", "a\u007fb"],
+    ["a C1 control", "a\u0085b"],
+    ["a line separator", "a\u2028b"],
+    ["a paragraph separator", "a\u2029b"],
+  ])("refuses a control character: %s", (_what, title) => {
+    expect(one({ title })).toEqual(["projects[0].title holds a control character"]);
+  });
+
+  test("looks at the whole document: generated, site, extra fields at any depth, and field names", () => {
+    const extra = { note: { list: ["fine", { deep: "${1+1}" }] }, "a${b}": 1 };
+    const doc = {
+      ...catalog([project(extra)]),
+      generated: "${1}",
+      site: "https://avunu.net/${1}",
+      "x<y": true,
+    };
+    expect(validateCatalog(doc).sort()).toEqual(
+      [
+        'a field name in projects[0] holds a "${" (the compiler evaluates it as an expression)',
+        'a field name in the document holds a "<" or ">" (markup)',
+        'generated holds a "${" (the compiler evaluates it as an expression)',
+        'projects[0].note.list[1].deep holds a "${" (the compiler evaluates it as an expression)',
+        'site holds a "${" (the compiler evaluates it as an expression)',
+      ].sort(),
+    );
+  });
+
+  test("a field name with odd characters is quoted in the sentence, never printed raw", () => {
+    const problems = validateCatalog({
+      ...catalog(),
+      "a b": { "\u001b[2J": "<x>" },
+    });
+    expect(problems).toEqual([
+      'a field name in ["a b"] holds a control character',
+      '["a b"]["\\u001b[2J"] holds a "<" or ">" (markup)',
+    ]);
+    // nothing of the problem text is a control character
+    expect(problems.join("")).not.toMatch(/\p{Cc}/u);
+  });
+
+  test("never repeats the offending text: only where it is and what is wrong", () => {
+    const hostile = "T${process.getBuiltinModule(`fs`).mkdirSync(`pwned-dir`)}T";
+    const problems = one({ title: hostile, slug: `\u001b]0;pwned\u0007${hostile}` });
+    expect(problems.length).toBeGreaterThan(0);
+    for (const problem of problems) {
+      expect(problem).not.toContain("pwned");
+      expect(problem).not.toContain("process");
+      expect(problem).not.toMatch(/\p{Cc}/u);
+    }
+  });
+
+  test("an entry with a hostile slug is named by its position, not by its slug", () => {
+    expect(one({ slug: "Bad<slug>", platform: "x" })).toContain(
+      'projects[0]: "platform" must be one of frappe, odoo, wordpress, nixos, general',
+    );
+  });
+
+  test("ordinary text is fine: quotes, ampersands, a lone $ or {, braces, backticks, accents, dashes", () => {
+    const fine = [
+      "Frappe & ERPNext",
+      `The "quoted" one's`,
+      "costs $5 {sometimes}",
+      "a $ {b}",
+      "{{ not a template }}",
+      "back`tick",
+      "back\\slash",
+      "Résumé \u2014 \u00fcber \u{1F680}",
+    ];
+    for (const text of fine) {
+      expect(one({ title: text, summary: text, license: text, suite: text }), text).toEqual([]);
+    }
+  });
+
+  test("nesting is bounded: a hostile document nested very deep is reported, not followed", () => {
+    let deep: unknown = "${x}";
+    for (let level = 0; level < 100_000; level++) deep = [deep];
+    const problems = validateCatalog({ ...catalog(), deep });
+    expect(problems).toEqual(["deep[0][0][0][0][0][0][0][0] is nested more than 8 levels deep"]);
+  });
+
+  test("the bundled catalog holds no such text", () => {
+    const text = readFileSync(bundledCatalogFile(), "utf8");
+    expect(text).not.toContain("${");
+    expect(text).not.toMatch(/[<>]/);
   });
 });
 

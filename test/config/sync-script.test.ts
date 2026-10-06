@@ -174,6 +174,29 @@ describe("sync-catalog: not published yet, and trouble", () => {
     },
   );
 
+  test.each(["--check", "update"])(
+    "a catalog with a template expression is refused like any other that is not a catalog (%s)",
+    async (mode) => {
+      // What the weekly workflow would otherwise commit: the pull request would carry code that the
+      // compiler evaluates in every site's build.
+      const hostile = catalog([entry({ title: "T${process.cwd()}T" })]);
+      const url = await serve(json(hostile));
+      const { out } = fileWith("OLD");
+      const result = await run([
+        ...(mode === "--check" ? ["--check"] : []),
+        "--url",
+        url,
+        "--out",
+        out,
+      ]);
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("notice:");
+      expect(result.stdout).toContain('projects[0].title holds a "${"');
+      expect(result.stdout).not.toContain("process.cwd");
+      expect(readFileSync(out, "utf8")).toBe("OLD");
+    },
+  );
+
   test("a server error is a failure, exit 1", async () => {
     const url = await serve(status(500));
     const { out } = fileWith("OLD");

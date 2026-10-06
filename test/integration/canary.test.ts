@@ -8,15 +8,16 @@
 // and the real Jx with stand-ins for those packages, and always runs.
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { run } from "../../src/main.js";
 import { validateConfig } from "../../src/lib/config.js";
-import { readBundledCatalog } from "../../src/lib/catalog.js";
+import { readBundledCatalog, readBundledCatalogDocument } from "../../src/lib/catalog.js";
 import { contrastFailures } from "../../src/lib/contrast.js";
 import { jxVersions } from "../../src/lib/jx.js";
 import { lintDocs } from "../../src/lib/lint.js";
 import { acquireLock } from "../../src/lib/lock.js";
+import { json, serve } from "../config/server.js";
 import { REPO_ROOT, listTree, runCli, tempDir } from "../support/index.js";
 import { jxEnv, repoFrom, type Repo } from "./support.js";
 
@@ -215,6 +216,36 @@ describe.skipIf(waiting.length > 0)(
           /^::error file=docs\/README\.md,line=\d+,title=lint::.*Reference-style links/m,
         );
         expect(stdout.split("\n").at(-1)).toBe("check: FAILED");
+      });
+    });
+
+    describe("a hostile live catalog", () => {
+      // The compiler evaluates a `${...}` in the text that a page renders, and the switcher renders the
+      // title, slug and links of the catalog: `--refresh-catalog` must never let one through.
+      test("--refresh-catalog refuses a catalog with a template expression: it is not compiled, the bundled catalog is used", async () => {
+        const marker = join(tempDir(), "evaluated");
+        const hostile = structuredClone(readBundledCatalogDocument());
+        const victim = hostile.projects[1];
+        if (victim === undefined)
+          throw new Error("the bundled catalog has fewer than two projects");
+        victim.title = `T\${process.getBuiltinModule(\`fs\`).writeFileSync(\`${marker}\`, \`x\`)}T`;
+        victim.docs = "https://avunu.net/${process.cwd()}";
+        const url = await serve(json(hostile));
+
+        const repo = cleanRepo();
+        const { code, stdout, stderr } = await cli(repo, ["build", "--refresh-catalog"], {
+          DOCUSYSTEM_CATALOG_URL: url,
+        });
+        expect(code, `${stdout}\n${stderr}`).toBe(0);
+        expect(`${stdout}\n${stderr}`).toMatch(
+          /catalog: .*does not match the catalog contract; using the catalog bundled with/,
+        );
+        expect(`${stdout}\n${stderr}`).toContain('projects[1].title holds a "${"');
+        expect(existsSync(marker)).toBe(false);
+        expect(JSON.parse(readFileSync(repo.paths.manifest, "utf8")).catalog).toBe("bundled");
+        const page = readFileSync(join(repo.paths.dist, "index.html"), "utf8");
+        expect(page).not.toContain("T${");
+        expect(page).not.toContain(dirname(marker));
       });
     });
 
