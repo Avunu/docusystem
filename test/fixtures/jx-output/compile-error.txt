@@ -1,0 +1,7 @@
+Building site from /work/site...
+Content ids: "docs" has two entries with the id "guide" (guide/README.md and guide.md). A lookup finds only the first; give one of them a distinct name.
+Content routes: "docs" has two entries at /docs/guide (guide/README.md and guide.md). Only guide/README.md is routed; make the route unique, for example by adding a field to the template.
+Error compiling /: Failed to parse Jx document at /work/site/pages/index.json: Expected double-quoted property name in JSON at position 16 (line 1 column 17)
+
+Build completed with 1 error(s):
+  - Error compiling /: Failed to parse Jx document at /work/site/pages/index.json: Expected double-quoted property name in JSON at position 16 (line 1 column 17)
