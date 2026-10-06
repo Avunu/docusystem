@@ -77,6 +77,8 @@ State of `Avunu/docusystem` read on 2026-10-06: public; auto-merge off; secret s
 6. **Settings, Environments.** Create `npm`, with deployment branches limited to `main`. It holds no secret once the first release is done.
 7. **Settings, Actions, General.** Turn on "Require actions to be pinned to a full-length commit SHA" (every `uses:` in this repository already is). Leave the default workflow permission at `read`.
 
+`node scripts/check-github-settings.mjs` reads all of these with the `gh` command line (logged in as an admin of the repository) and lists each one that is not in place, with what it is now and where to change it. It only reads, and a setting it is not allowed to see is reported as unknown, never as off. Run it before merging the release pull request, and again afterwards. The environment `npm` matters most for publishing: npm's trusted publisher checks the repository, the workflow file and the environment name but not the branch, so the environment's deployment-branch rule is what keeps a copy of `release.yml` edited on another branch from obtaining a publish token.
+
 A public repository can call a reusable workflow only from a public repository, and a private repository can call a public one. A caller's organization needs "allow actions and reusable workflows" to include `Avunu/docusystem/*` if it restricts Actions to a list.
 
 ## Gates
