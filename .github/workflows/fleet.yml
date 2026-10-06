@@ -1,0 +1,60 @@
+name: Fleet
+
+# Adopts this build in every Avunu repository of fleet.json, the way a maintainer would (a shallow clone
+# without a token, `docusystem init --from-readme` from the packed tarball, `npm install`, then
+# `CI=true docusystem check`), and reports one row per repository in the job summary. It is how a
+# release finds out that a change breaks somebody's README before the somebody does.
+#
+# Weekly and on demand this is informational: a red run means a repository regressed or an exception in
+# fleet.expected-failures.json went stale, and nothing is blocked. On a release pull request the same
+# script runs as the `fleet` job of ci.yml, where every repository must pass or be named there.
+on:
+  schedule:
+    - cron: "37 4 * * 3"
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Adopt a single repository (owner/name, as listed in fleet.json) instead of the whole fleet.
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: fleet
+  cancel-in-progress: false
+
+jobs:
+  fleet:
+    name: Fleet
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read # checkout; the fleet's repositories are cloned without a token
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Adopt the build in the fleet
+        env:
+          FLEET_REPO: ${{ inputs.repo }}
+        run: |
+          if [ -z "$FLEET_REPO" ]; then
+            node scripts/fleet.mjs
+          elif [[ "$FLEET_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            node scripts/fleet.mjs --repo "$FLEET_REPO"
+          else
+            echo "::error title=repo::expected owner/name, got '$FLEET_REPO'"
+            exit 1
+          fi
