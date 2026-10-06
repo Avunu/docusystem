@@ -1,6 +1,6 @@
 {
   "name": "@avunu/docusystem",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The documentation system shared by every Avunu open-source project: a CLI that builds a project's Markdown into its docs site, and the reusable GitHub Actions workflows that check and deploy it.",
   "keywords": [
     "avunu",
