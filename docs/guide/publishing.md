@@ -147,7 +147,7 @@ Both pull requests run `docs.yml` and upload the built site as a review artifact
     if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}
 ```
 
-The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one; any other shape is left alone, printed with the line to add. `doctor` reports an auto-merge workflow that lacks the exclusion.
+The branch prefix says `npm_and_yarn` because the shell's lockfile is `package-lock.json`, which makes Dependabot's ecosystem `npm`. The condition may as well test the pull request's author (`github.event.pull_request.user.login == 'dependabot[bot]'`, the form that zizmor recommends) or be a folded `if: >-` block, which gets the exclusion as a new first line; a condition with an `||` is put in parentheses first. A `dependabot/bun/docs-site` exclusion, as the first sites to adopt the system had, is rewritten to this one. A shape that `init` cannot rewrite (a quoted condition, several jobs that test for Dependabot, a file that is not valid YAML) is left alone, and `init` prints the condition it found and the finished line to paste. `doctor` reports an auto-merge workflow that lacks the exclusion, and says `docusystem init` does it only when it does.
 
 > [!NOTE]
 > The `docs.yml` path filter means its check is not reported on pull requests that touch no docs path, so it cannot be a required status check as it stands. Whether to make it always report, so that the exclusion can go, is an open decision of the maintainers; see [MAINTAINING.md](../../MAINTAINING.md).

@@ -62,7 +62,7 @@ The file is parsed, not searched: an `npm /` entry followed by a `bun /docs-site
 
 Errors:
 
-- An auto-merge workflow lacks an exclusion for exactly `dependabot/npm_and_yarn/<site folder>`. A `dependabot/bun/...` exclusion counts as missing, because the shell's lockfile makes Dependabot's ecosystem `npm`.
+- An auto-merge workflow lacks an exclusion for exactly `dependabot/npm_and_yarn/<site folder>`. A `dependabot/bun/...` exclusion counts as missing, because the shell's lockfile makes Dependabot's ecosystem `npm`. The message says that `docusystem init` fixes it only when `init` can patch that workflow; otherwise it says what to do by hand, with the finished `if:` line.
 
 ## Lockfile
 

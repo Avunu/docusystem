@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { parse } from "yaml";
 import {
   hasSiteExclusion,
   isAutoMergeWorkflow,
@@ -9,14 +10,14 @@ import { readFixture } from "./support/fixtures.js";
 import { PILOTS } from "./support/shell.js";
 
 const CONDITION = "if: ${{ github.actor == 'dependabot[bot]' }}";
-const workflow = (condition: string, indent = "    "): string =>
+const workflow = (condition: string): string =>
   [
     "name: Dependabot auto-merge",
     "on: pull_request",
     "jobs:",
     "  auto-merge:",
     "    runs-on: ubuntu-latest",
-    `${indent}${condition}`,
+    `    ${condition}`,
     "    steps:",
     '      - run: gh pr merge --auto --squash "$PR_URL"',
     "",
@@ -47,12 +48,22 @@ describe("the standard condition", () => {
   });
 
   test("keeps the indentation of the line and tolerates spacing and a trailing comment", () => {
-    const before = workflow("if: ${{github.actor=='dependabot[bot]'}}  # only bots", "      ");
+    const before = [
+      "jobs:",
+      "  auto-merge:",
+      "      runs-on: ubuntu-latest",
+      "      if: ${{github.actor=='dependabot[bot]'}}  # only bots",
+      "      steps:",
+      '        - run: gh pr merge --auto --squash "$PR_URL"',
+      "",
+    ].join("\n");
     const { text, changed } = patchAutoMerge(before, "docs-site");
     expect(changed).toBe(true);
     expect(text).toContain("      # The documentation site's package updates");
     expect(text).toContain("      # default branch publishes the site.");
-    expect(text).toContain("      if: ${{ github.actor == 'dependabot[bot]' && !startsWith(");
+    expect(text).toContain(
+      "      if: ${{ github.actor=='dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}  # only bots",
+    );
   });
 
   test("a nested site folder is named in the branch", () => {
@@ -93,28 +104,227 @@ describe.each(PILOTS)("the real auto-merge workflow of %s", (pilot) => {
   });
 });
 
-describe("every other shape is left alone", () => {
-  test("a different condition: the note says what to add", () => {
+const PREFIX = "dependabot/npm_and_yarn/docs-site";
+const CLAUSE = `!startsWith(github.head_ref, '${PREFIX}')`;
+
+describe("the pull request's author as the condition (what zizmor recommends)", () => {
+  const AUTHOR = "if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}";
+
+  test("gets the exclusion too, and the diff is the comment and the one line", () => {
+    const before = workflow(AUTHOR);
+    const { text, changed, note } = patchAutoMerge(before, "docs-site");
+    expect(changed).toBe(true);
+    expect(note).toBeUndefined();
+    expect(text).toBe(
+      workflow(
+        [
+          "# The documentation site's package updates (docs-site/) are reviewed by a person: a merge to the",
+          "    # default branch publishes the site.",
+          `    if: \${{ github.event.pull_request.user.login == 'dependabot[bot]' && ${CLAUSE} }}`,
+        ].join("\n"),
+      ),
+    );
+    expect(hasSiteExclusion(text, "docs-site")).toBe(true);
+    expect(patchAutoMerge(text, "docs-site")).toEqual({ text, changed: false });
+  });
+
+  test("the operands in the other order are recognised", () => {
+    const { text, changed } = patchAutoMerge(
+      workflow("if: ${{ 'dependabot[bot]' == github.event.pull_request.user.login }}"),
+      "docs-site",
+    );
+    expect(changed).toBe(true);
+    expect(text).toContain(
+      `'dependabot[bot]' == github.event.pull_request.user.login && ${CLAUSE} }}`,
+    );
+  });
+});
+
+describe("a condition with more in it", () => {
+  test("keeps what is there and gains the clause at the end", () => {
+    const { text, changed } = patchAutoMerge(
+      workflow("if: ${{ github.actor == 'dependabot[bot]' && github.repository == 'Avunu/x' }}"),
+      "docs-site",
+    );
+    expect(changed).toBe(true);
+    expect(text).toContain(
+      `    if: \${{ github.actor == 'dependabot[bot]' && github.repository == 'Avunu/x' && ${CLAUSE} }}`,
+    );
+  });
+
+  test("an alternative is put in parentheses first, so that the clause binds to all of it", () => {
+    const { text, changed } = patchAutoMerge(
+      workflow(
+        "if: ${{ github.actor == 'dependabot[bot]' || github.actor == 'dependabot-preview[bot]' }}",
+      ),
+      "docs-site",
+    );
+    expect(changed).toBe(true);
+    expect(text).toContain(
+      `if: \${{ (github.actor == 'dependabot[bot]' || github.actor == 'dependabot-preview[bot]') && ${CLAUSE} }}`,
+    );
+  });
+
+  test("a bare expression (no ${{ }}) stays bare", () => {
+    const { text, changed } = patchAutoMerge(
+      workflow("if: github.event.pull_request.user.login == 'dependabot[bot]'"),
+      "docs-site",
+    );
+    expect(changed).toBe(true);
+    expect(text).toContain(
+      `    if: github.event.pull_request.user.login == 'dependabot[bot]' && ${CLAUSE}\n`,
+    );
+  });
+
+  test("a plain value over several lines gets the clause after its last line", () => {
+    const { text, changed } = patchAutoMerge(
+      workflow(
+        "if: github.event.pull_request.user.login == 'dependabot[bot]' &&\n      github.repository == 'Avunu/x'",
+      ),
+      "docs-site",
+    );
+    expect(changed).toBe(true);
+    expect(text).toContain(
+      `    if: github.event.pull_request.user.login == 'dependabot[bot]' &&\n      github.repository == 'Avunu/x' && ${CLAUSE}\n`,
+    );
+  });
+});
+
+describe("a folded block (`if: >-`, the shape of the fleet's nixos-micro-desktop)", () => {
+  const block = (header = ">-"): string =>
+    workflow(
+      [
+        `if: ${header}`,
+        "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+        "      github.repository == 'Avunu/x'",
+      ].join("\n"),
+    );
+
+  test.each([">-", ">", "|"])(
+    "%s: the clause is a new first line and nothing else moves",
+    (header) => {
+      const before = block(header);
+      const { text, changed, note } = patchAutoMerge(before, "docs-site");
+      expect(changed).toBe(true);
+      expect(note).toBeUndefined();
+      expect(text).toBe(
+        workflow(
+          [
+            "# The documentation site's package updates (docs-site/) are reviewed by a person: a merge to the",
+            "    # default branch publishes the site.",
+            `    if: ${header}`,
+            `      ${CLAUSE} &&`,
+            "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+            "      github.repository == 'Avunu/x'",
+          ].join("\n"),
+        ),
+      );
+      expect(hasSiteExclusion(text, "docs-site")).toBe(true);
+      expect(patchAutoMerge(text, "docs-site")).toEqual({ text, changed: false });
+    },
+  );
+
+  test("what the block says to GitHub is the old condition with the clause in front", () => {
+    const { text } = patchAutoMerge(block(), "docs-site");
+    const job = parse(text).jobs["auto-merge"] as { if: string };
+    expect(job.if).toBe(
+      `${CLAUSE} && github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'Avunu/x'`,
+    );
+  });
+
+  test("CRLF files keep CRLF", () => {
+    const { text } = patchAutoMerge(block().replace(/\n/g, "\r\n"), "docs-site");
+    expect(text.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(text).toContain(`      ${CLAUSE} &&\r\n`);
+  });
+
+  test("a block with an alternative is left alone: the clause would bind to the first one only", () => {
     const before = workflow(
-      "if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false }}",
+      [
+        "if: >-",
+        "      github.actor == 'dependabot[bot]' ||",
+        "      github.actor == 'dependabot-preview[bot]'",
+      ].join("\n"),
     );
     const { text, changed, note } = patchAutoMerge(before, "docs-site");
     expect(text).toBe(before);
     expect(changed).toBe(false);
-    expect(note).toContain("!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')");
+    expect(note).toContain("line 6");
+    expect(note).toContain(
+      `if: \${{ (github.actor == 'dependabot[bot]' || github.actor == 'dependabot-preview[bot]') && ${CLAUSE} }}`,
+    );
+  });
+});
+
+describe("every other shape is left alone, with the line to paste", () => {
+  test("a quoted condition: the note shows the condition and the finished line", () => {
+    const before = workflow(`if: "github.actor == 'dependabot[bot]'"`);
+    const { text, changed, note } = patchAutoMerge(before, "docs-site");
+    expect(text).toBe(before);
+    expect(changed).toBe(false);
+    expect(note).toContain("the job `auto-merge`");
+    expect(note).toContain("line 6: `github.actor == 'dependabot[bot]'`");
+    expect(note).toContain(
+      `replace its \`if:\` with \`if: \${{ github.actor == 'dependabot[bot]' && ${CLAUSE} }}\``,
+    );
   });
 
-  test("the standard condition twice: not guessed which job is meant", () => {
-    const twice = `${workflow(CONDITION)}${workflow(CONDITION)}`;
-    const { text, changed, note } = patchAutoMerge(twice, "docs-site");
-    expect(text).toBe(twice);
+  test("a condition that mixes text with an expression", () => {
+    const before = workflow("if: x${{ github.actor == 'dependabot[bot]' }}");
+    const { text, changed, note } = patchAutoMerge(before, "docs-site");
+    expect(text).toBe(before);
     expect(changed).toBe(false);
-    expect(note).toContain("more than once");
+    expect(note).toContain("mixes text and ${{ }} expressions");
+    expect(note).toContain(CLAUSE);
+  });
+
+  test("the condition on the line after its key", () => {
+    const before = workflow("if:\n      ${{ github.actor == 'dependabot[bot]' }}");
+    const { text, changed, note } = patchAutoMerge(before, "docs-site");
+    expect(text).toBe(before);
+    expect(changed).toBe(false);
+    expect(note).toContain(`if: \${{ github.actor == 'dependabot[bot]' && ${CLAUSE} }}`);
+  });
+
+  test("two jobs with a Dependabot condition: not guessed which one merges", () => {
+    const two = [
+      "name: x",
+      "on: pull_request",
+      "jobs:",
+      "  label:",
+      `    ${CONDITION}`,
+      "    steps:",
+      "      - run: echo labelled",
+      "  auto-merge:",
+      `    ${CONDITION}`,
+      "    steps:",
+      "      - run: gh pr merge --auto",
+      "",
+    ].join("\n");
+    const { text, changed, note } = patchAutoMerge(two, "docs-site");
+    expect(text).toBe(two);
+    expect(changed).toBe(false);
+    expect(note).toContain("`label`, `auto-merge`");
+    expect(note).toContain(CLAUSE);
   });
 
   test("a step-level if is not a job's condition", () => {
-    const before = workflow(`- ${CONDITION}`);
-    expect(patchAutoMerge(before, "docs-site").changed).toBe(false);
+    const before = [
+      "name: x",
+      "on: pull_request",
+      "jobs:",
+      "  auto-merge:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      `      - ${CONDITION}`,
+      "        run: gh pr merge --auto",
+      "",
+    ].join("\n");
+    const { text, changed, note } = patchAutoMerge(before, "docs-site");
+    expect(text).toBe(before);
+    expect(changed).toBe(false);
+    expect(note).toContain("no job has a condition that tests for Dependabot");
+    expect(note).toContain(CLAUSE);
   });
 
   test("no condition at all", () => {
@@ -122,7 +332,16 @@ describe("every other shape is left alone", () => {
       "name: x\njobs:\n  a:\n    steps:\n      - run: gh pr merge --auto\n    # dependabot[bot]\n";
     const { changed, note } = patchAutoMerge(before, "docs-site");
     expect(changed).toBe(false);
-    expect(note).toContain("nowhere");
+    expect(note).toContain("no job has a condition that tests for Dependabot");
+  });
+
+  test("a workflow that is not valid YAML", () => {
+    const before = `${workflow(CONDITION)}${workflow(CONDITION)}`; // every key twice
+    const { text, changed, note } = patchAutoMerge(before, "docs-site");
+    expect(text).toBe(before);
+    expect(changed).toBe(false);
+    expect(note).toContain("not valid YAML");
+    expect(note).toContain(CLAUSE);
   });
 });
 

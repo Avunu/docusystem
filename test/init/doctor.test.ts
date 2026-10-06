@@ -543,6 +543,41 @@ describe("the auto-merge workflow", () => {
     expect(errors(root)).toContain(
       "!startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site')",
     );
+    // init would do it, and says so
+    expect(errors(root)).toContain("(`docusystem init` does)");
+  });
+
+  test("a shape init cannot patch: no promise that init does it, and the finished line to paste", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "if: ${{ github.actor == 'dependabot[bot]' }}",
+        `if: "github.actor == 'dependabot[bot]'"`,
+      ),
+    );
+    const message = errors(root);
+    expect(message).toContain(
+      `${file} merges Dependabot's pull requests but does not skip the site's`,
+    );
+    expect(message).not.toContain("`docusystem init` does");
+    expect(message).toContain("`docusystem init` cannot patch it");
+    expect(message).toContain("line 6: `github.actor == 'dependabot[bot]'`");
+    expect(message).toContain(
+      "if: ${{ github.actor == 'dependabot[bot]' && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
+    );
+  });
+
+  test("the pull request author's condition, the form zizmor recommends, is patched by init and so promised", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(
+      join(root, file),
+      AUTOMERGE.replace(
+        "github.actor == 'dependabot[bot]'",
+        "github.event.pull_request.user.login == 'dependabot[bot]'",
+      ),
+    );
+    expect(errors(root)).toContain("(`docusystem init` does)");
   });
 
   test("false OK of the judges: an exclusion of the bun branches does not count", async () => {
@@ -607,8 +642,27 @@ describe("the auto-merge workflow", () => {
     );
   });
 
-  test("what init patches, doctor accepts", async () => {
-    const root = makeRepo({ files: { [file]: AUTOMERGE } });
+  const FOLDED = AUTOMERGE.replace(
+    "if: ${{ github.actor == 'dependabot[bot]' }}",
+    [
+      "if: >-",
+      "      github.event.pull_request.user.login == 'dependabot[bot]' &&",
+      "      github.repository == 'Avunu/frappe-nix'",
+    ].join("\n"),
+  );
+
+  test.each([
+    ["the standard condition", AUTOMERGE],
+    [
+      "the pull request author's condition",
+      AUTOMERGE.replace(
+        "github.actor == 'dependabot[bot]'",
+        "github.event.pull_request.user.login == 'dependabot[bot]'",
+      ),
+    ],
+    ["a folded multi-line condition", FOLDED],
+  ])("what init patches, doctor accepts: %s", async (_shape, workflow) => {
+    const root = makeRepo({ files: { [file]: workflow } });
     await exec((ctx) => runInit(ctx, { resolvePin: () => ({ sha: SHA, reason: null }) }), {
       command: "init",
       cwd: root,
@@ -620,6 +674,12 @@ describe("the auto-merge workflow", () => {
     expect(all(root).map((f) => f.message)).toContain(
       `${file}: leaves the site's Dependabot pull requests to a person`,
     );
+  });
+
+  test("a folded multi-line condition is an error with the promise that init does it", async () => {
+    const root = await initialisedRepo();
+    writeFileSync(join(root, file), FOLDED);
+    expect(errors(root)).toContain("(`docusystem init` does)");
   });
 });
 
