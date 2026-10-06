@@ -467,7 +467,7 @@ describe("startDev", () => {
         }
       },
     });
-    s.builds.delay = 150;
+    s.builds.delay = 300;
     writeFileSync(join(s.docsDir, "a.md"), "one");
     await until(() => s.builds.count >= 1);
     for (const text of ["two", "three", "four"]) {
