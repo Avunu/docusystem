@@ -1,0 +1,10 @@
+{
+  "name": "Canary",
+  "tagline": "A small documentation tree that the real-Jx canary builds: every page is clean.",
+  "slug": "docusystem-example",
+  "platform": "general",
+  "repo": "https://github.com/Avunu/docusystem-example",
+  "domain": "docusystem-example.avunu.net",
+  "license": "MIT",
+  "images": "off"
+}

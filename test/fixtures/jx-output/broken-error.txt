@@ -1,0 +1,4 @@
+Building site from /work/site...
+Content type "docs": entry "README" references missing asset "assets/not-there.png"
+Build failed: Content links: "docs" has 1 broken link:
+  - "README.md" links to "guide/missing.md", which does not exist
