@@ -609,13 +609,13 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
     expect(p.advice.join("\n")).toContain("package-ecosystem: npm");
   });
 
-  test("an auto-merge workflow of another shape is advice, and one that is not an auto-merge workflow is left alone", () => {
+  test("an auto-merge workflow of a shape init cannot patch is advice, and one that is not an auto-merge workflow is left alone", () => {
     const odd = [
       "name: Auto merge",
       "on: pull_request",
       "jobs:",
       "  merge:",
-      "    if: github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false",
+      `    if: "github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false"`,
       "    runs-on: ubuntu-latest",
       '    steps:\n      - run: gh pr merge --auto "$PR"',
       "",
@@ -631,7 +631,10 @@ describe("Dependabot and the auto-merge workflow (steps 4 and 5)", () => {
       ".github/workflows/dependabot-auto-merge.yml",
     );
     expect(p.advice.join("\n")).toContain(
-      "dependabot-auto-merge.yml: its condition is not the standard",
+      "dependabot-auto-merge.yml: the condition of the job `merge` (line 5: `github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false`) is a shape init does not rewrite",
+    );
+    expect(p.advice.join("\n")).toContain(
+      "if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false && !startsWith(github.head_ref, 'dependabot/npm_and_yarn/docs-site') }}",
     );
     expect(p.actions.map((a) => a.path)).not.toContain(".github/workflows/check.yml");
   });
