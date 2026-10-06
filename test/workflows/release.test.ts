@@ -4,7 +4,7 @@
 import { Ajv } from "ajv";
 import { describe, expect, test } from "vitest";
 import { TYPES } from "../../scripts/check-pr-title.mjs";
-import { readJson, workflow, type Step } from "./helpers.js";
+import { readJson, readText, workflow, type Step } from "./helpers.js";
 
 const release = workflow("release.yml");
 const jobs = release.doc.jobs;
@@ -106,6 +106,18 @@ describe("release.yml", () => {
     expect(script.indexOf('"$have" != "$VERSION"')).toBeLessThan(script.indexOf("npm publish"));
   });
 
+  test("the publish job's inputs are the outputs of release-please's own step, so only the run that created the release can publish it", () => {
+    // release-please reports a release only for a merged pull request still labelled
+    // `autorelease: pending`, and relabels it `autorelease: tagged` when it tags. A later run (Re-run
+    // all jobs, a dispatch, any push) therefore reports none and skips publish: MAINTAINING.md says so.
+    expect(please?.outputs).toEqual({
+      "release-created": "${{ steps.rp.outputs.release_created }}",
+      "tag-name": "${{ steps.rp.outputs.tag_name }}",
+      version: "${{ steps.rp.outputs.version }}",
+      sha: "${{ steps.rp.outputs.sha }}",
+    });
+  });
+
   test("publishing sits in the same file as release-please: npm trusted publishing names the workflow file", () => {
     const text = release.text;
     expect(text).toContain("googleapis/release-please-action@");
@@ -178,5 +190,30 @@ describe("release-please configuration", () => {
     const action = stepWith(please?.steps, "googleapis/release-please-action@");
     expect(action?.with?.["config-file"]).toBe("release-please-config.json");
     expect(action?.with?.["manifest-file"]).toBe(".release-please-manifest.json");
+  });
+});
+
+describe("MAINTAINING.md, how a failed publish is retried", () => {
+  const maintaining = readText("MAINTAINING.md");
+
+  test("names Re-run failed jobs as the retry, and warns off Re-run all jobs, a dispatch and a push", () => {
+    expect(maintaining).toContain("**Re-run failed jobs**");
+    expect(maintaining).toMatch(
+      /Never choose \*\*Re-run all jobs\*\*, start the workflow by hand or push/,
+    );
+    // The reason: the release pull request is relabelled when it is tagged, so a second run sees no release.
+    expect(maintaining).toContain("`autorelease: pending`");
+    expect(maintaining).toContain("`autorelease: tagged`");
+    expect(maintaining).toContain("the run is green with nothing published");
+  });
+
+  test("says a failure in the code at the release commit needs a fix: commit and a new release, then how to verify", () => {
+    expect(maintaining).toContain("the tag `v<VERSION>` stays on that commit");
+    expect(maintaining).toContain("`fix:` commit and the next release");
+    expect(maintaining).toContain("npm view @avunu/docusystem@<VERSION> _npmUser");
+  });
+
+  test("no longer promises that any re-run of a failed run is safe", () => {
+    expect(maintaining).not.toMatch(/re-running a failed run is safe/i);
   });
 });
