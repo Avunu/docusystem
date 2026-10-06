@@ -7,6 +7,7 @@ import {
   inlineText,
   moveLeadingComment,
   parseFrontmatter,
+  parseFrontmatterLeniently,
 } from "../../src/lib/frontmatter.js";
 
 test("splits frontmatter from the body", () => {
@@ -209,4 +210,17 @@ test("frontmatter with an alias bomb is an error, not a hang", () => {
   expect(() => parseFrontmatter(`---\n${bomb.join("\n")}\n---\n`, "bomb.md")).toThrow(
     /bomb\.md: the frontmatter is not valid YAML \(Excessive alias count/,
   );
+});
+
+test("a lenient read keeps the body of a page whose frontmatter is unusable, and returns the problem", () => {
+  const read = parseFrontmatterLeniently("---\ntitle: A\ntitle: B\n---\n# Body\n", "p.md");
+  expect(read.data).toEqual({});
+  expect(read.body).toBe("# Body\n");
+  expect(read.problem).toBeInstanceOf(FrontmatterError);
+  expect(read.problem?.line).toBe(3);
+  // A usable page is read as it always is, with no problem.
+  expect(parseFrontmatterLeniently("---\ntitle: A\n---\nx", "p.md")).toEqual({
+    data: { title: "A" },
+    body: "x",
+  });
 });

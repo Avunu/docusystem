@@ -7,6 +7,7 @@ import {
   labelOf,
   orderOf,
   readDocs,
+  readDocsWithProblems,
   titleOf,
   urlFor,
 } from "../../src/lib/docs.js";
@@ -123,6 +124,25 @@ test("readDocs names the file whose frontmatter is not valid YAML", () => {
   const root = makeTree({ "README.md": "# Home\n", "guides/a.md": "---\ntitle: [unclosed\n---\n" });
   expect(() => readDocs(root)).toThrow(FrontmatterError);
   expect(() => readDocs(root)).toThrow(/^guides\/a\.md: the frontmatter is not valid YAML/);
+});
+
+test("readDocsWithProblems lists a page with unusable frontmatter as if it had none, and returns the problem", () => {
+  const root = makeTree({
+    "README.md": "# Home\n",
+    "a.md": "---\ntitle: [unclosed\n---\n# Heading of A\n",
+    "b.md": "---\ndraft: true\n---\n",
+    "c.md": "---\n- not a mapping\n---\n# C\n",
+  });
+  const { files, problems } = readDocsWithProblems(root);
+  expect(files.map((f) => f.rel)).toEqual(["README.md", "a.md", "c.md"]);
+  expect(files.find((f) => f.rel === "a.md")).toMatchObject({
+    data: {},
+    body: "# Heading of A\n",
+  });
+  expect(problems.map((p) => [p.message.split(":")[0], p.line])).toEqual([
+    ["a.md", 2],
+    ["c.md", 1],
+  ]);
 });
 
 test("readDocs does not follow links: the staged copy holds real files only", () => {

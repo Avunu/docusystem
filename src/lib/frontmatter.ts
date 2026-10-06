@@ -86,22 +86,43 @@ function readYaml(yaml: string, file: string): unknown {
   }
 }
 
+/** The frontmatter block at the very top of a source: its YAML (null when there is none) and the rest. */
+function split(source: string): { yaml: string | null; body: string } {
+  const text = source.replace(/^\uFEFF/, "");
+  const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  if (!match) return { yaml: null, body: text };
+  return { yaml: match[1] ?? "", body: text.slice(match[0].length) };
+}
+
 /**
  * Splits a Markdown source into frontmatter data and body. Throws a FrontmatterError (whose message
  * starts with the file name) on bad YAML or on frontmatter that is not a mapping.
  */
 export function parseFrontmatter(source: string, file = "document"): Parsed {
-  const text = source.replace(/^\uFEFF/, "");
-  const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
-  if (!match) return { data: {}, body: text };
-  const body = text.slice(match[0].length);
-  const yaml = match[1] ?? "";
-  if (yaml.trim() === "") return { data: {}, body };
+  const { yaml, body } = split(source);
+  if (yaml === null || yaml.trim() === "") return { data: {}, body };
   const parsed = readYaml(yaml, file);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new FrontmatterError(file, "must be a YAML mapping (key: value lines)", 1);
   }
   return { data: parsed as Record<string, unknown>, body };
+}
+
+/**
+ * Like parseFrontmatter, but a page whose frontmatter is unusable is read as if it had none (its
+ * body is what follows the block) and the problem comes back with it instead of being thrown. For
+ * the steps that report problems and carry on.
+ */
+export function parseFrontmatterLeniently(
+  source: string,
+  file = "document",
+): Parsed & { problem?: FrontmatterError } {
+  try {
+    return parseFrontmatter(source, file);
+  } catch (error) {
+    if (!(error instanceof FrontmatterError)) throw error;
+    return { data: {}, body: split(source).body, problem: error };
+  }
 }
 
 /**

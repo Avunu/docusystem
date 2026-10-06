@@ -6,7 +6,12 @@
 // fails when a sidebar link is not a page.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { firstHeading, firstParagraph, parseFrontmatter } from "./frontmatter.js";
+import {
+  type FrontmatterError,
+  firstHeading,
+  firstParagraph,
+  parseFrontmatterLeniently,
+} from "./frontmatter.js";
 import { humanize, slugifyPath } from "./slug.js";
 import type { DocFile } from "./types.js";
 
@@ -68,17 +73,23 @@ function markdownFiles(root: string, dir = ""): string[] {
 }
 
 /**
- * Reads every published page under `root` (the staged copy of the documentation). Files come back
- * in the order Jx reads them. Throws a FrontmatterError, naming the file, when a page's frontmatter
- * is not usable.
+ * Reads every published page under `root` (the staged copy of the documentation) in the order Jx
+ * reads them. A page whose frontmatter is not usable is read as if it had none (it counts as
+ * published) and its problem is returned with the files: a step that reports problems and carries
+ * on needs the page list either way.
  */
-export function readDocs(root: string): DocFile[] {
+export function readDocsWithProblems(root: string): {
+  files: DocFile[];
+  problems: FrontmatterError[];
+} {
   const files: DocFile[] = [];
+  const problems: FrontmatterError[] = [];
   for (const rel of markdownFiles(root)) {
-    const { data, body } = parseFrontmatter(
+    const { data, body, problem } = parseFrontmatterLeniently(
       readFileSync(join(root, rel.split("/").join(sep)), "utf8"),
       rel,
     );
+    if (problem !== undefined) problems.push(problem);
     if (!isPublished(data)) continue;
     const slash = rel.lastIndexOf("/");
     const name = rel.slice(slash + 1);
@@ -91,6 +102,17 @@ export function readDocs(root: string): DocFile[] {
       body,
     });
   }
+  return { files, problems };
+}
+
+/**
+ * Reads every published page under `root` (the staged copy of the documentation). Files come back
+ * in the order Jx reads them. Throws the FrontmatterError, naming the file, of the first page whose
+ * frontmatter is not usable.
+ */
+export function readDocs(root: string): DocFile[] {
+  const { files, problems } = readDocsWithProblems(root);
+  if (problems[0] !== undefined) throw problems[0];
   return files;
 }
 

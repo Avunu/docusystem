@@ -207,10 +207,32 @@ test("writeNav without a README says what to add, and writes nothing", () => {
   expect(existsSync(paths.navFile)).toBe(false);
 });
 
-test("a page whose frontmatter is not valid YAML stops the navigation and names the file", () => {
+test("a page whose frontmatter is not valid YAML is listed as if it had none, with a warning that names it", () => {
   const paths = pathsIn(makeTree({}));
-  writeTree(paths.stagedDocs, { "README.md": "# Home\n", "guides/a.md": "---\na: 1\na: 2\n---\n" });
-  expect(() => writeNav(paths, { name: "x" })).toThrow(
-    /guides\/a\.md: the frontmatter is not valid YAML/,
-  );
+  writeTree(paths.stagedDocs, {
+    "README.md": "# Home\n",
+    "guides/a.md": "---\na: 1\na: 2\n---\n# Guide A\n\nAbout A.\n",
+    "guides/b.md": "---\ntitle: B\n---\n",
+  });
+  const { nav: written, warnings, pages } = writeNav(paths, { name: "x" });
+  expect(pages).toBe(3);
+  expect(warnings).toEqual([
+    "guides/a.md: the frontmatter is not valid YAML (Map keys must be unique); it is listed as if it had none",
+  ]);
+  expect(written.pages["/docs/guides/a/"]).toMatchObject({
+    title: "Guide A",
+    description: "About A.",
+    edit: "guides/a.md",
+  });
+});
+
+test("a home page with broken frontmatter is still the home page", () => {
+  const paths = pathsIn(makeTree({}));
+  writeTree(paths.stagedDocs, { "README.md": "---\n- a\n---\n# Home\n", "a.md": "# A\n" });
+  const { nav: written, warnings } = writeNav(paths, { name: "x" });
+  expect(written.home.url).toBe("/docs/");
+  expect(written.pages["/docs/"]!.title).toBe("Home");
+  expect(warnings).toEqual([
+    "README.md: the frontmatter must be a YAML mapping (key: value lines); it is listed as if it had none",
+  ]);
 });

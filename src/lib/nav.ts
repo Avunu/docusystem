@@ -2,7 +2,7 @@
 // files. buildNav is a pure function; writeNav (step 7 of the pipeline) reads the staged copy of the
 // Markdown and writes `.generated/nav.json`, which layouts/docs.json and pages/[...path].json read at
 // build time as the `nav` content type.
-import { descriptionOf, labelOf, orderOf, readDocs, titleOf, urlFor } from "./docs.js";
+import { descriptionOf, labelOf, orderOf, readDocsWithProblems, titleOf, urlFor } from "./docs.js";
 import { writeJson } from "./fsutil.js";
 import { humanize } from "./slug.js";
 import type {
@@ -205,12 +205,24 @@ export function buildNav(
  * (`paths.stagedDocs`) and writes it to `paths.navFile`. `pages` is the number of pages Jx will
  * publish: every published file, once per address (a file that shares an address with an earlier one
  * is left out and named in `warnings`), hidden pages included.
+ *
+ * A page whose frontmatter is not valid YAML does not stop the step: it is listed as if it had no
+ * frontmatter and a warning names the problem (the lint reports it as an error, and Jx refuses the
+ * page, so the build does not publish). Throws only when the documentation has no home page.
  */
 export function writeNav(
   paths: Pick<Paths, "stagedDocs" | "navFile">,
   config: Pick<DocsConfig, "name">,
 ): { nav: NavData; warnings: string[]; pages: number } {
-  const { nav, warnings } = buildNav(readDocs(paths.stagedDocs), config.name);
+  const { files, problems } = readDocsWithProblems(paths.stagedDocs);
+  const { nav, warnings } = buildNav(files, config.name);
   writeJson(paths.navFile, nav);
-  return { nav, warnings, pages: Object.keys(nav.pages).length };
+  return {
+    nav,
+    warnings: [
+      ...problems.map((problem) => `${problem.message}; it is listed as if it had none`),
+      ...warnings,
+    ],
+    pages: Object.keys(nav.pages).length,
+  };
 }
