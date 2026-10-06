@@ -1,0 +1,1 @@
+{"version":1,"engine":"minisearch","fields":["title","heading","text"],"documents":[{"id":"docs:README","url":"/docs/","title":"Fixture","heading":"","text":"Start."},{"id":"docs:README#intro","url":"/docs/#intro","title":"Fixture","heading":"Intro","text":"Intro."},{"id":"docs:guide","url":"/docs/guide/","title":"Guide","heading":"","text":"The guide."}]}

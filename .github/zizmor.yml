@@ -1,0 +1,9 @@
+# zizmor (https://docs.zizmor.sh) audits every workflow here and the callers in examples/basic/.github,
+# in the "pedantic" persona, in CI (the `workflows` job of ci.yml). Every action, the reusable
+# workflows of this repository included, must be pinned to a full commit hash: a version comment is
+# for people, the hash is what runs.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin

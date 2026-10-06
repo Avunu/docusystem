@@ -1,0 +1,148 @@
+name: Docs build
+
+# The reusable workflow that checks and builds an Avunu project's documentation site. A project calls
+# it from its own .github/workflows/docs.yml (pull requests) and docs-publish.yml (default branch),
+# pinned to a commit of this repository:
+#
+#   jobs:
+#     build:
+#       permissions:
+#         contents: read
+#       uses: Avunu/docusystem/.github/workflows/docs-build.yml@<40-character commit> # v1.2.3
+#
+# What it does: installs the site's locked dependencies without running their scripts, verifies the
+# registry signatures and the docs system's own provenance, then runs the INSTALLED CLI, never a
+# fresh download: `docusystem check --ci` (lint, colour contrast, strict build, assertions on what
+# was built, a crawl of every link). The result is uploaded for review, or as the GitHub Pages
+# artifact when `pages-artifact` is true, for docs-deploy.yml to publish.
+#
+# The token is read-only (`contents: read`) and there are no secrets. The project controls the inputs
+# of this job (docs/, docs-site/ and its lockfile), so nothing here may hold a token that can publish:
+# that is docs-deploy.yml's job, which runs no project code.
+#
+# Triggers belong to the caller and must be pull_request, push or workflow_dispatch. Never
+# pull_request_target or workflow_run: this workflow checks out and executes the pull request's code.
+#
+# CONTRACT: the CLI refuses to run when its workflow contract differs from the one below, and says
+# which `uses:` line to change. The contract is an integer that changes only when this workflow and
+# the CLI stop being able to work together; a package and a workflow pin of the same major always do.
+on:
+  workflow_call:
+    inputs:
+      site-directory:
+        description: Folder with the site's package.json and docusystem.config.json, relative to the repository root.
+        required: false
+        type: string
+        default: docs-site
+      pages-artifact:
+        description: Upload the built site as the GitHub Pages artifact (for docs-deploy.yml) instead of a review artifact.
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  DOCUSYSTEM_WORKFLOW_CONTRACT: "1"
+
+jobs:
+  check:
+    name: Check
+    # A push to a branch that has a pull request would build twice: on push, only the default branch builds.
+    if: ${{ github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout only
+    env:
+      SITE_DIR: ${{ inputs.site-directory }}
+      DOCUSYSTEM_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Check the site directory
+        run: |
+          if ! [[ "$SITE_DIR" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]*$ ]] || [[ "$SITE_DIR" == *..* ]]; then
+            echo "::error title=site-directory::must be a plain relative path such as docs-site (got '$SITE_DIR')"
+            exit 1
+          fi
+
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the lockfile
+        working-directory: ${{ inputs.site-directory }}
+        run: |
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            echo "::error title=lockfile::$SITE_DIR has a Bun lockfile. This workflow installs with npm so that Dependabot can read the lockfile and the provenance of @avunu/docusystem can be verified: run \`npm install\` in $SITE_DIR, commit package-lock.json and delete bun.lock."
+            exit 1
+          fi
+          if [ ! -f package-lock.json ]; then
+            echo "::error title=lockfile::commit package-lock.json in $SITE_DIR (npm install): the build installs with the lockfile frozen"
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false # a restored cache is an input to a build that is about to be deployed
+
+      - name: Install the locked dependencies
+        working-directory: ${{ inputs.site-directory }}
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # Registry signatures and provenance attestations of everything that was installed: a signature
+      # that does not verify fails the build. The docs system itself must also carry a verified
+      # provenance attestation, because it is the one dependency that runs here on every project's behalf.
+      - name: Verify package signatures and the docs system's provenance
+        working-directory: ${{ inputs.site-directory }}
+        run: |
+          npm audit signatures
+          npm audit signatures --json --include-attestations | jq -e '
+            (.invalid | length) == 0 and
+            ([.verified[] | select(.name == "@avunu/docusystem" and .attestations.provenance != null)] | length) >= 1
+          ' > /dev/null || {
+            echo "::error title=provenance::@avunu/docusystem has no verified provenance attestation"
+            exit 1
+          }
+
+      # One command: lint, colour contrast of the tokens as the site resolved them, a strict build,
+      # a check of what the build wrote, and a crawl of every link. The site is left in <site>/dist.
+      - name: Check and build the site
+        working-directory: ${{ inputs.site-directory }}
+        env:
+          CI: "true" # a document problem fails the build instead of being a warning
+        run: ./node_modules/.bin/docusystem check --ci
+
+      - name: Upload the site for review
+        if: ${{ github.event_name == 'pull_request' || !inputs.pages-artifact }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-site
+          path: ${{ inputs.site-directory }}/dist
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: true # .well-known/ is part of the site
+
+      - name: Package the site for GitHub Pages
+        if: ${{ github.event_name != 'pull_request' && inputs.pages-artifact }}
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ inputs.site-directory }}/dist
+          include-hidden-files: true # dotfiles are dropped by default, and that includes .well-known/
+
+      # What a maintainer needs to debug a red run in a repository they do not have checked out.
+      - name: Upload the assembled project for debugging
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docusystem-debug
+          path: |
+            ${{ inputs.site-directory }}/.docusystem/manifest.json
+            ${{ inputs.site-directory }}/.docusystem/jx.log
+            ${{ inputs.site-directory }}/.docusystem/site
+            !${{ inputs.site-directory }}/.docusystem/site/node_modules
+          retention-days: 7
+          if-no-files-found: ignore
+          include-hidden-files: true # .docusystem/ and .generated/ are hidden folders

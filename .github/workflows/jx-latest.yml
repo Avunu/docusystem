@@ -1,0 +1,98 @@
+name: Jx latest
+
+# The early warning for a Jx release that Dependabot has not proposed yet. The package pins the four Jx
+# packages it was tested with, exactly, so a Jx release reaches this repository only through a
+# Dependabot pull request (the `jx` group, a few days after the release at the latest). Weekly, this
+# workflow installs `@jxsuite/*@latest` over the pins (without saving anything), runs the real-Jx canary
+# of the integration tests and builds the example with the result. When that fails it opens one issue
+# (or adds a comment to the one that is open) so that the break is known before the Dependabot pull
+# request arrives.
+on:
+  schedule:
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: jx-latest
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Canary and example with the latest Jx
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+    outputs:
+      versions: ${{ steps.install.outputs.versions }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install the locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # The one place that installs outside the lockfile, on purpose: the point of this workflow is to run
+      # the build against what the registry would give a fresh install of the Jx packages.
+      - name: Install the latest Jx over the pins
+        id: install
+        run: | # zizmor: ignore[adhoc-packages]
+          npm install --no-save --ignore-scripts --no-audit --no-fund \
+            @jxsuite/compiler@latest @jxsuite/parser@latest @jxsuite/runtime@latest @jxsuite/search@latest
+          versions="$(jq -r '"\(.name) \(.version)"' \
+            node_modules/@jxsuite/compiler/package.json node_modules/@jxsuite/parser/package.json \
+            node_modules/@jxsuite/runtime/package.json node_modules/@jxsuite/search/package.json | paste -sd, - | sed 's/,/, /g')"
+          echo "Installed: $versions"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: npm run build
+      # test/integration runs the pinned Jx on the clean and the broken canary trees: strictness must not
+      # fail open when Jx rewords a message.
+      - name: The real-Jx canary
+        run: npm test -- --project integration
+      # The CLI finds Jx next to itself, so this builds the example with what was just installed.
+      - name: Check the example with the latest Jx
+        env:
+          CI: "true"
+        run: node dist/cli.js check --ci --site examples/basic/docs-site
+
+  report:
+    name: Open or update the issue
+    needs: canary
+    if: ${{ always() && needs.canary.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write # open or comment on the issue
+    steps:
+      - name: Report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ needs.canary.result }}
+          VERSIONS: ${{ needs.canary.outputs.versions }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing="$(gh issue list --state open --label jx-latest --limit 1 --json number --jq '.[0].number // empty')"
+          if [ "$RESULT" = "success" ]; then
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "The weekly run is green again with ${VERSIONS:-the latest Jx}: $RUN_URL. Close this issue when the pins are current."
+            fi
+            exit 0
+          fi
+          body="The weekly run with the latest Jx (${VERSIONS:-versions not recorded}) failed: $RUN_URL
+
+          Nothing is broken for sites yet: this package pins its Jx packages exactly and consumers install those. A Dependabot pull request for the \`jx\` group will fail the same way. Read the log of the failed step (the canary or the example build) first."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh label create jx-latest --description "The weekly run against the latest Jx failed" --color B60205 --force
+            gh issue create --label jx-latest --title "The latest Jx breaks the docs system" --body "$body"
+          fi

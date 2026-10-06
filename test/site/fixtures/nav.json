@@ -1,0 +1,309 @@
+{
+  "home": {
+    "label": "Overview",
+    "url": "/docs/"
+  },
+  "loose": [
+    {
+      "label": "Getting started",
+      "url": "/docs/getting-started/"
+    }
+  ],
+  "sections": [
+    {
+      "label": "Guides",
+      "url": "/docs/guides/",
+      "urls": [
+        "/docs/guides/",
+        "/docs/guides/install/",
+        "/docs/guides/configuration-options/"
+      ],
+      "pages": [
+        {
+          "label": "Overview",
+          "url": "/docs/guides/"
+        },
+        {
+          "label": "Install options",
+          "url": "/docs/guides/install/"
+        },
+        {
+          "label": "Configuration",
+          "url": "/docs/guides/configuration-options/"
+        }
+      ],
+      "groups": []
+    },
+    {
+      "label": "Questions",
+      "url": "/docs/faq/",
+      "urls": [
+        "/docs/faq/",
+        "/docs/faq/general/"
+      ],
+      "pages": [
+        {
+          "label": "Overview",
+          "url": "/docs/faq/"
+        },
+        {
+          "label": "General questions",
+          "url": "/docs/faq/general/"
+        }
+      ],
+      "groups": []
+    },
+    {
+      "label": "Reference",
+      "url": null,
+      "urls": [
+        "/docs/reference/api/",
+        "/docs/reference/advanced/",
+        "/docs/reference/advanced/internals/"
+      ],
+      "pages": [
+        {
+          "label": "Programming interface",
+          "url": "/docs/reference/api/"
+        }
+      ],
+      "groups": [
+        {
+          "label": "Advanced",
+          "url": "/docs/reference/advanced/",
+          "urls": [
+            "/docs/reference/advanced/",
+            "/docs/reference/advanced/internals/"
+          ],
+          "pages": [
+            {
+              "label": "Overview",
+              "url": "/docs/reference/advanced/"
+            },
+            {
+              "label": "Internals",
+              "url": "/docs/reference/advanced/internals/"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "expandAll": true,
+  "pages": {
+    "/docs/": {
+      "title": "Example Project documentation",
+      "description": "What the example project does and where its guides are.",
+      "section": "",
+      "prev": null,
+      "next": {
+        "title": "Getting started",
+        "url": "/docs/getting-started/"
+      },
+      "edit": "README.md"
+    },
+    "/docs/faq/general/": {
+      "title": "General questions",
+      "description": "A fixture that stands in for a project's documentation.",
+      "section": "Questions",
+      "prev": {
+        "title": "Questions",
+        "url": "/docs/faq/"
+      },
+      "next": {
+        "title": "API",
+        "url": "/docs/reference/api/"
+      },
+      "edit": "faq/general.md"
+    },
+    "/docs/faq/": {
+      "title": "Questions",
+      "description": "Answers to common questions.",
+      "section": "Questions",
+      "prev": {
+        "title": "Configuration",
+        "url": "/docs/guides/configuration-options/"
+      },
+      "next": {
+        "title": "General questions",
+        "url": "/docs/faq/general/"
+      },
+      "edit": "faq/readme.md"
+    },
+    "/docs/getting-started/": {
+      "title": "Getting started",
+      "description": "Install the example project and run it for the first time.",
+      "section": "",
+      "prev": {
+        "title": "Example Project documentation",
+        "url": "/docs/"
+      },
+      "next": {
+        "title": "Guides",
+        "url": "/docs/guides/"
+      },
+      "edit": "getting-started.md"
+    },
+    "/docs/guides/configuration-options/": {
+      "title": "Configuration",
+      "description": "Every setting the example project reads.",
+      "section": "Guides",
+      "prev": {
+        "title": "Install options",
+        "url": "/docs/guides/install/"
+      },
+      "next": {
+        "title": "Questions",
+        "url": "/docs/faq/"
+      },
+      "edit": "guides/Configuration Options.md"
+    },
+    "/docs/guides/": {
+      "title": "Guides",
+      "description": "Task-oriented guides.",
+      "section": "Guides",
+      "prev": {
+        "title": "Getting started",
+        "url": "/docs/getting-started/"
+      },
+      "next": {
+        "title": "Install options",
+        "url": "/docs/guides/install/"
+      },
+      "edit": "guides/README.md"
+    },
+    "/docs/guides/install/": {
+      "title": "Install options",
+      "description": "The ways to install the example project.",
+      "section": "Guides",
+      "prev": {
+        "title": "Guides",
+        "url": "/docs/guides/"
+      },
+      "next": {
+        "title": "Configuration",
+        "url": "/docs/guides/configuration-options/"
+      },
+      "edit": "guides/install.md"
+    },
+    "/docs/reference/advanced/": {
+      "title": "Advanced",
+      "description": "Topics for people who need more.",
+      "section": "Reference",
+      "prev": {
+        "title": "API",
+        "url": "/docs/reference/api/"
+      },
+      "next": {
+        "title": "Internals",
+        "url": "/docs/reference/advanced/internals/"
+      },
+      "edit": "reference/advanced/index.md"
+    },
+    "/docs/reference/advanced/internals/": {
+      "title": "Internals",
+      "description": "How the example project is put together.",
+      "section": "Reference",
+      "prev": {
+        "title": "Advanced",
+        "url": "/docs/reference/advanced/"
+      },
+      "next": null,
+      "edit": "reference/advanced/internals.md"
+    },
+    "/docs/reference/api/": {
+      "title": "API",
+      "description": "The programming interface.",
+      "section": "Reference",
+      "prev": {
+        "title": "General questions",
+        "url": "/docs/faq/general/"
+      },
+      "next": {
+        "title": "Advanced",
+        "url": "/docs/reference/advanced/"
+      },
+      "edit": "reference/api.md"
+    }
+  },
+  "flat": [
+    {
+      "title": "Example Project documentation",
+      "url": "/docs/"
+    },
+    {
+      "title": "Getting started",
+      "url": "/docs/getting-started/"
+    },
+    {
+      "title": "Guides",
+      "url": "/docs/guides/"
+    },
+    {
+      "title": "Install options",
+      "url": "/docs/guides/install/"
+    },
+    {
+      "title": "Configuration",
+      "url": "/docs/guides/configuration-options/"
+    },
+    {
+      "title": "Questions",
+      "url": "/docs/faq/"
+    },
+    {
+      "title": "General questions",
+      "url": "/docs/faq/general/"
+    },
+    {
+      "title": "API",
+      "url": "/docs/reference/api/"
+    },
+    {
+      "title": "Advanced",
+      "url": "/docs/reference/advanced/"
+    },
+    {
+      "title": "Internals",
+      "url": "/docs/reference/advanced/internals/"
+    }
+  ],
+  "featured": [
+    {
+      "title": "Getting started",
+      "description": "Install the example project and run it for the first time.",
+      "url": "/docs/getting-started/",
+      "section": ""
+    },
+    {
+      "title": "Guides",
+      "description": "Task-oriented guides.",
+      "url": "/docs/guides/",
+      "section": "Guides"
+    },
+    {
+      "title": "Install options",
+      "description": "The ways to install the example project.",
+      "url": "/docs/guides/install/",
+      "section": "Guides"
+    },
+    {
+      "title": "Configuration",
+      "description": "Every setting the example project reads.",
+      "url": "/docs/guides/configuration-options/",
+      "section": "Guides"
+    },
+    {
+      "title": "Questions",
+      "description": "Answers to common questions.",
+      "url": "/docs/faq/",
+      "section": "Questions"
+    },
+    {
+      "title": "General questions",
+      "description": "A fixture that stands in for a project's documentation.",
+      "url": "/docs/faq/general/",
+      "section": "Questions"
+    }
+  ]
+}
