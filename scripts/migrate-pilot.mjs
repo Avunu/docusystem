@@ -828,7 +828,7 @@ export function formatPlan(plan, o = {}) {
     lines.push(
       "",
       "Next:",
-      `  cd ${plan.site} && npm install && CI=true npm run check && npx docusystem doctor`,
+      `  cd ${plan.site} && npm install && CI=true npm run check && npx @avunu/docusystem doctor`,
       "  then review `git status` and `git diff`, and commit as one commit:",
       "  docs: build the documentation site with @avunu/docusystem",
     );
