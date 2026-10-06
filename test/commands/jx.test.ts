@@ -128,6 +128,33 @@ describe("docusystem jx", () => {
     expect(stderr).toContain("lint: error: docs/a.md:1  Footnotes are not rendered.");
   });
 
+  test("`jx validate` cannot work on a root that is assembled afresh: a note says so and names the way out", async () => {
+    const { code, stdout, stderr } = await jx(["validate"], { FAKE_JX_EXIT: "1" });
+    expect(code).toBe(1); // still Jx's own exit code
+    expect(stderr).toContain("docusystem: note: `jx validate` does not work on the generated root");
+    expect(stderr).toContain("project.schema.json that `jx schema` writes is gone");
+    expect(stderr).toContain("`docusystem jx build --verbose` is the command that works");
+    // standard output is Jx's alone, as for every other command
+    expect(stdout.split("\n")).toHaveLength(1);
+    expect((JSON.parse(stdout) as { args: string[] }).args).toEqual(["validate", world.paths.root]);
+  });
+
+  test("other Jx commands, `schema` and `build` included, run without the note", async () => {
+    for (const argv of [["schema"], ["build", "--verbose"]]) {
+      const { code, stderr } = await jx(argv);
+      expect(code, argv.join(" ")).toBe(0);
+      expect(stderr, argv.join(" ")).not.toContain("docusystem: note:");
+    }
+  });
+
+  test("the usage error and the help name a command that works, not `validate`", async () => {
+    const { stderr } = await jx([]);
+    expect(stderr).toContain("for example `docusystem jx build --verbose`");
+    const help = await runCli(["--help", "jx"], { cwd: world.dir });
+    expect(help.stdout).toContain("for example `docusystem jx build --verbose`");
+    expect(help.stdout).not.toContain("jx validate");
+  });
+
   test("without a Jx command it is a usage error", async () => {
     const { code, stderr } = await jx([]);
     expect(code).toBe(2);

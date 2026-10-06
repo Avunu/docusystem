@@ -115,14 +115,17 @@ When something is wrong and the message is not enough, the build keeps everythin
 - `npx docusystem info` prints versions, folders, the resolved branch, overrides and the exact command to run Jx by hand; `--json` and `--nav` print it as JSON and the sidebar tree.
 - When Jx fails, the build prints `docusystem: jx build failed. The assembled project is <root>; run: <execPath> <jx.js> build <root>`.
 
-To use Jx's own tools on the assembled root, run them through the pinned Jx:
+To see what Jx itself prints for the assembled root, run it through the pinned Jx:
 
 ```bash
-npx docusystem jx validate
-npx docusystem --site docs-site jx validate
+npx docusystem jx build --verbose
+npx docusystem --site docs-site jx build --verbose
 ```
 
-`docusystem jx` assembles the project root (and never builds), then runs the pinned Jx CLI as `jx <arguments> <root>`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. It exits with Jx's exit code.
+`docusystem jx` assembles the project root (docusystem itself builds nothing), then runs the pinned Jx CLI as `jx <arguments> <root>`. Everything after `jx` goes to Jx unchanged, so give `--site` before it. It exits with Jx's exit code. The root is assembled from empty on every run, so what Jx writes into it lasts only until the next docusystem command, and `jx build` writes to `<root>/dist`, not to `<site>/dist`, and skips the post-build steps.
+
+> [!WARNING]
+> `jx validate` does not work on the generated root, so `docusystem jx validate` is not a check to run. It fails with `project.schema.json not found` and tells you to run `jx schema`, and `docusystem jx schema` cannot help: the next `docusystem jx` run assembles the root again and the schema is gone. Run by hand after `jx schema`, Jx's validator reports the package's own pages and layouts as invalid, because its schema for a `Function` entry has no `timing` key and the package's pages use `timing: "compiler"`, which Jx's compiler accepts. Nothing in that report is yours to fix. Use `docusystem check` for the checks that apply to a site.
 
 > [!NOTE]
 > Jx Studio and `jx dev` are not supported on the assembled root. The Markdown lives outside the Jx project root, `jx dev` needs the optional `@jxsuite/server` package and Bun, and it skips the post-build fixes. `docusystem dev` serves exactly what deploys.
