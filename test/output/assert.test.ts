@@ -139,7 +139,7 @@ const CASES: Case[] = [
     name: "a raw HTML anchor came out as <a href></a>text",
     change: (s) => edit(guide(s), (t) => swap(t, "<p>Back", "<p><a href></a>Raw anchor. Back")),
     fails: [A.links],
-    says: /\/docs\/guide\/ \(<a href>\)/,
+    says: /\/docs\/guide\/ \(<a href>\)\. A raw HTML <a href> in that page's Markdown .*`docusystem lint` lists it with its file and line/,
   },
   {
     name: "a link has an empty href attribute value and no text",

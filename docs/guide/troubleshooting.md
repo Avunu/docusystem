@@ -57,7 +57,7 @@ The `lint:` stage reports them as errors with `file:line`: "Reference-style link
 
 ## An empty link fails the build
 
-The `assert:` stage prints `FAIL` for the assertion that no page has an empty link (an `<a href>` with no text, image or `aria-label`). Jx writes an empty link followed by the text for a raw HTML anchor, and the assertion fails in every mode, including `--lenient`. Replace the raw anchor with a Markdown link, `[text](url)`. Badges are `[![alt](image)](url)`.
+The `assert:` stage prints `FAIL` for the assertion that no page has an empty link (an `<a href>` with no text, image or `aria-label`). Jx writes an empty link followed by the text (or the image) for a raw HTML anchor in a paragraph, and the assertion fails in every mode, including `--lenient`. The `lint:` stage reports the anchor first, with `file:line` (an error, printed as a warning under `--lenient`), and `docusystem lint` lists it without building. Replace the raw anchor with a Markdown link, `[text](url)`. Badges are `[![alt](image)](url)`.
 
 ## A symbolic link is not published
 

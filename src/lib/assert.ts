@@ -240,7 +240,9 @@ export function assertBuild(
     verdict(
       hollowLinks.length === 0,
       "no page has a link without text, image or aria-label",
-      `links with nothing inside: ${listOf(hollowLinks)}`,
+      `links with nothing inside: ${listOf(hollowLinks)}. A raw HTML <a href> in that page's Markdown ` +
+        "is the usual cause (Jx leaves the link empty and puts its text after it): `docusystem lint` lists it " +
+        "with its file and line, and [text](url) replaces it",
     ),
   );
 

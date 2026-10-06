@@ -87,21 +87,21 @@ They render as callouts on the site and as alerts on GitHub.
 
 ## What does not render
 
-Jx drops or reshapes a few constructs that GitHub and Obsidian handle. The build reports each one as `docs/<file>:<line>` with what to write instead. The ones marked "error" lose text, so a strict build (every CI run) fails on them; the others are warnings.
+Jx drops or reshapes a few constructs that GitHub and Obsidian handle. The build reports each one as `docs/<file>:<line>` with what to write instead. The ones marked "error" lose text or leave an empty link, so a strict build (every CI run) fails on them; the others are warnings.
 
-| Written                                                | What the site does                   | Build                              |
-| ------------------------------------------------------ | ------------------------------------ | ---------------------------------- |
-| Reference-style links (`[text][ref]` and `[ref]: url`) | The text of every such link vanishes | error in CI                        |
-| Footnotes (`[^1]` and `[^1]: note`)                    | The marker and the note vanish       | error in CI                        |
-| Inline HTML such as `<kbd>`, `<b>` or `<sub>`          | The text stays, outside the element  | warning                            |
-| `<a>` around an `<img>` in a paragraph (a badge)       | The image stays, the link is lost    | warning                            |
-| An inline `<a href>`                                   | The text stays, the link is lost     | warning, then an error (see below) |
-| A `<div>` or `<details>` with a blank line inside      | An empty element, then the content   | warning                            |
-| Task lists (`- [ ]`)                                   | Plain list items                     | warning                            |
-| Table column alignment (`:---:`)                       | Columns are left-aligned             | warning                            |
-| `${...}` in a link or image address                    | Jx runs it as an expression          | warning                            |
+| Written                                                | What the site does                   | Build                           |
+| ------------------------------------------------------ | ------------------------------------ | ------------------------------- |
+| Reference-style links (`[text][ref]` and `[ref]: url`) | The text of every such link vanishes | error in CI                     |
+| Footnotes (`[^1]` and `[^1]: note`)                    | The marker and the note vanish       | error in CI                     |
+| Inline HTML such as `<kbd>`, `<b>` or `<a id>`         | The text stays, outside the element  | warning                         |
+| `<a href>` around an `<img>` in a paragraph (a badge)  | The image stays, the link is lost    | error, fails lenient builds too |
+| An inline `<a href>`                                   | The text stays, the link is lost     | error, fails lenient builds too |
+| A `<div>` or `<details>` with a blank line inside      | An empty element, then the content   | warning                         |
+| Task lists (`- [ ]`)                                   | Plain list items                     | warning                         |
+| Table column alignment (`:---:`)                       | Columns are left-aligned             | warning                         |
+| `${...}` in a link or image address                    | Jx runs it as an expression          | warning                         |
 
-A raw `<a href>` has a second consequence: Jx writes an empty link for it, and the post-build assertion "no page has an empty link" fails in every mode, strict or lenient. Write `[text](url)` and `[![alt](image)](url)` for a badge.
+A raw `<a href>` in a paragraph, around text or around an image, is worse than a lost link: Jx writes an empty link, `<a href></a>`, and puts the text or the image after it. The post-build assertion "no page has an empty link" then fails every build, strict or lenient, and nothing is published. Under `--lenient` the lint error is printed as a warning, but the assertion still fails, so fix it either way: write `[text](url)`, and `[![alt](image)](url)` for a badge. An anchor without `href` (`<a id="top"></a>`) only warns. A badge inside a block such as `<p align="center">` is not affected.
 
 Block HTML without a blank line inside it (`<p align="center"><img ...></p>`) works, as do `<br>`, `<img>` and HTML comments. In Markdown content `${...}` is literal in prose, code spans, code blocks and headings, so `${HOME}` stays `${HOME}`.
 

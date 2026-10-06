@@ -58,14 +58,51 @@ test("inline HTML elements warn: the text stays, the element is lost", () => {
   expect(rules("Press <kbd>Ctrl</kbd>+<kbd>C</kbd> and <sub>2</sub>.")).toEqual([
     "warning:html-inline@1",
   ]);
-  expect(rules("A <a href='https://x.org'>link</a> in a sentence.")).toEqual([
-    "warning:html-inline@1",
-  ]);
-  const badge = lintMarkdown('<a href="https://x.org"><img src="b.svg"></a>', "a.md");
-  expect(badge.map((i) => i.rule)).toEqual(["html-badge"]);
-  expect(badge[0]!.message).toContain("[![alt](image)](url)");
   // An email autolink is not an <a> element.
   expect(rules("Mail <a@b.com> or visit <https://x.org>.")).toEqual([]);
+});
+
+test("an <a href> in a paragraph is an error: Jx leaves an empty link and the empty-link assertion fails every build", () => {
+  const link = lintMarkdown("A <a href='https://x.org'>link</a> in a sentence.", "a.md");
+  expect(link.map((i) => `${i.level}:${i.rule}@${i.line}`)).toEqual(["error:html-inline@1"]);
+  expect(link[0]!.message).toContain("[text](url)");
+  expect(link[0]!.message).toContain("which fails the build in every mode, --lenient included");
+
+  // A badge: the same level and the same reason, and the Markdown form to write instead.
+  const badge = lintMarkdown('A <a href="https://x.org"><img src="b.svg"></a> badge.', "a.md");
+  expect(badge.map((i) => `${i.level}:${i.rule}@${i.line}`)).toEqual(["error:html-badge@1"]);
+  expect(badge[0]!.message).toContain("[![alt](image)](url)");
+  expect(badge[0]!.message).toContain("which fails the build in every mode, --lenient included");
+
+  // On the line of the badge, wherever it is in the page, and once per kind per line.
+  expect(
+    rules(
+      [
+        "Intro.",
+        "",
+        'Text <a href="https://x.org/1"><img src="1.svg"></a> <a href="https://x.org/2"><img src="2.svg"></a>',
+        "and <a href=a>one</a> and <a href=b>two</a>.",
+      ].join("\n"),
+    ),
+  ).toEqual(["error:html-badge@3", "error:html-inline@4"]);
+
+  // Attribute spellings and quoted values: an href is found whatever the case and the order, and a
+  // quoted value that holds a ">" or the word href is not an attribute.
+  expect(rules('<A CLASS="x" HREF="https://x.org">link</A>')).toEqual(["error:html-inline@1"]);
+  expect(rules('<a title="a > b" href="https://x.org">link</a>')).toEqual(["error:html-inline@1"]);
+  expect(rules("<a href>link</a>")).toEqual(["error:html-inline@1"]);
+  expect(rules('<a title="see href=x" name="top">anchor</a>')).toEqual(["warning:html-inline@1"]);
+});
+
+test("an <a> without an href is an anchor, not a link: Jx keeps it, so it only warns", () => {
+  expect(rules('Jump <a id="top"></a> and <a name="x">there</a>.')).toEqual([
+    "warning:html-inline@1",
+  ]);
+  const [issue] = lintMarkdown('<a name="x">there</a>', "a.md");
+  expect(issue!.message).toContain("<a>");
+  expect(issue!.message).not.toContain("every mode");
+  // An <a name> around an image is not a badge: nothing is left empty.
+  expect(rules('<a name="x"><img src="b.svg"></a>')).toEqual(["warning:html-inline@1"]);
 });
 
 test("an HTML block that a blank line ends before its closing tag warns", () => {
