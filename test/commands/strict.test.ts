@@ -243,10 +243,10 @@ describe("messages", () => {
   });
 
   test("shellCommand quotes what a shell would split", () => {
-    expect(shellCommand(["/usr/bin/node", "/a/jx.js", "build", "/b/site"])).toBe(
+    expect(shellCommand(["/usr/bin/node", "/a/jx.js", "build", "/b/site"], "linux")).toBe(
       "/usr/bin/node /a/jx.js build /b/site",
     );
-    expect(shellCommand(["/usr/bin/node", "/a b/jx.js", "it's"])).toBe(
+    expect(shellCommand(["/usr/bin/node", "/a b/jx.js", "it's"], "linux")).toBe(
       "/usr/bin/node '/a b/jx.js' 'it'\\''s'",
     );
   });
