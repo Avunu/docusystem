@@ -27,17 +27,6 @@
       "docs": "docs"
     },
     {
-      "path": "avunu-odoo-addons",
-      "slug": "avunu-odoo-addons",
-      "name": "Avunu Odoo Addons",
-      "tagline": "Avunu's Odoo 18 Community modules for email and SMS, document import, AI providers, and the backend and shop-floor UI, built to work alongside OCA.",
-      "platform": "odoo",
-      "repo": "https://github.com/Avunu/avunu-odoo-addons",
-      "license": "AGPL-3.0-or-later AND LGPL-3.0-or-later",
-      "branch": "18.0",
-      "docs": "docs"
-    },
-    {
       "path": "carbon-theme",
       "slug": "carbon_theme",
       "name": "Carbon Theme",
@@ -236,7 +225,7 @@
       "path": "odoo-nix",
       "slug": "odoo-nix",
       "name": "odoo-nix",
-      "tagline": "Reproducible Nix infrastructure for Odoo Community (OCB) and OCA projects, from scaffolding and development to containers and NixOS.",
+      "tagline": "Reproducible Nix infrastructure for Odoo Community (OCB) and OCA, from scaffolding projects and addon repositories to repository standards, CI, containers, and NixOS.",
       "platform": "nixos",
       "repo": "https://github.com/Avunu/odoo-nix",
       "license": "MIT",

@@ -3,11 +3,6 @@
 	url = https://github.com/Avunu/automated_subscriptions.git
 	branch = develop
 	shallow = true
-[submodule "projects/avunu-odoo-addons"]
-	path = projects/avunu-odoo-addons
-	url = https://github.com/Avunu/avunu-odoo-addons.git
-	branch = 18.0
-	shallow = true
 [submodule "projects/carbon-theme"]
 	path = projects/carbon-theme
 	url = https://github.com/Avunu/carbon_theme.git
