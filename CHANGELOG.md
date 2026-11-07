@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/Avunu/site-docs/compare/v0.2.0...v0.3.0) (2026-11-07)
+
+
+### Features
+
+* add Avunu's ten Odoo addon repositories ([#178](https://github.com/Avunu/site-docs/issues/178)) ([c3a222a](https://github.com/Avunu/site-docs/commit/c3a222a9cf6397171e999fadcfff5a5aa4312dd4))
+
+
+### Bug Fixes
+
+* **deps:** Bump @jxsuite/compiler from 8.0.0 to 8.0.1 in the jx group ([#163](https://github.com/Avunu/site-docs/issues/163)) ([1085b79](https://github.com/Avunu/site-docs/commit/1085b79d0bf6849ca2c81f02c92c44bf4af81429))
+
 ## [0.2.0](https://github.com/Avunu/site-docs/compare/v0.1.0...v0.2.0) (2026-10-31)
 
 
