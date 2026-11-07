@@ -6,6 +6,16 @@
   "org": "https://github.com/Avunu",
   "projects": [
     {
+      "path": "ai-addons",
+      "slug": "ai-addons",
+      "name": "Avunu AI addons",
+      "tagline": "Odoo AI provider addons, alongside OCA/ai: Cloudflare Workers AI and AI Gateway for MuK AI.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/ai-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
       "path": "automated-subscriptions",
       "slug": "automated_subscriptions",
       "name": "Automated Subscriptions",
@@ -72,6 +82,16 @@
       "docs": "docs"
     },
     {
+      "path": "edi-addons",
+      "slug": "edi-addons",
+      "name": "Avunu EDI addons",
+      "tagline": "Odoo addons extending OCA/edi: turn emailed and printed documents (PDF, text, HTML, JSON) into Odoo records with import templates.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/edi-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
       "path": "employee-timeclock",
       "slug": "employee_timeclock",
       "name": "Employee Timeclock",
@@ -116,6 +136,16 @@
       "docs": "docs"
     },
     {
+      "path": "fleet-addons",
+      "slug": "fleet-addons",
+      "name": "Avunu fleet addons",
+      "tagline": "Odoo addons extending Fleet: a US vehicle make and model catalog, and VIN decoding through NHTSA vPIC.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/fleet-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
       "path": "frappe-nix",
       "slug": "frappe-nix",
       "name": "frappe-nix",
@@ -136,6 +166,16 @@
       "license": "MIT",
       "branch": "develop",
       "docs": "docs"
+    },
+    {
+      "path": "mail-addons",
+      "slug": "mail-addons",
+      "name": "Avunu mail addons",
+      "tagline": "Odoo addons extending OCA/mail: email through Cloudflare Email Sending and Routing, and two-way SMS/MMS through Twilio.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/mail-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
     },
     {
       "path": "mercury-banking-integration",
@@ -226,6 +266,36 @@
       "docs": "docs"
     },
     {
+      "path": "repair-addons",
+      "slug": "repair-addons",
+      "name": "Avunu repair addons",
+      "tagline": "Odoo addons extending Repair (OCA/repair): stages, service templates, purchase order parts, vehicles and timesheet time control.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/repair-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
+      "path": "server-tools-addons",
+      "slug": "server-tools-addons",
+      "name": "Avunu server tools addons",
+      "tagline": "Odoo addons extending OCA/server-tools: an FS Storage (S3 and others) destination for automatic database backups.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/server-tools-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
+      "path": "shopfloor-app-addons",
+      "slug": "shopfloor-app-addons",
+      "name": "Avunu Shopfloor app addons",
+      "tagline": "Odoo addons extending OCA/shopfloor-app: OAuth sign-in, device-camera barcode scanning and a Carbon theme for Shopfloor mobile apps.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/shopfloor-app-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
       "path": "site-docs",
       "slug": "site-docs",
       "name": "site-docs",
@@ -238,6 +308,16 @@
       "local": true
     },
     {
+      "path": "timesheet-addons",
+      "slug": "timesheet-addons",
+      "name": "Avunu timesheet addons",
+      "tagline": "Odoo addons extending OCA/timesheet: the running timesheet timer in the systray, with a stop button on every screen.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/timesheet-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
       "path": "ui-text-editor",
       "slug": "ui_text_editor",
       "name": "UI Text Editor",
@@ -247,6 +327,26 @@
       "license": "MIT",
       "branch": "develop",
       "docs": "docs"
+    },
+    {
+      "path": "vertical-auto-repair-addons",
+      "slug": "vertical-auto-repair-addons",
+      "name": "Avunu auto repair vertical",
+      "tagline": "Odoo addons for automotive repair shops: vehicle inspections, estimates, scheduling, technician workflow and a Shopfloor technician app.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/vertical-auto-repair-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
+    },
+    {
+      "path": "web-addons",
+      "slug": "web-addons",
+      "name": "Avunu web addons",
+      "tagline": "Odoo addons for the web client, extending OCA/web: the IBM Carbon Design System theme for the Odoo backend.",
+      "platform": "odoo",
+      "repo": "https://github.com/Avunu/web-addons",
+      "license": "AGPL-3.0-or-later",
+      "branch": "18.0"
     },
     {
       "path": "web-kiosk",

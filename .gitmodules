@@ -128,3 +128,53 @@
 	url = https://github.com/Avunu/nixos-router.git
 	branch = develop
 	shallow = true
+[submodule "projects/web-addons"]
+	path = projects/web-addons
+	url = https://github.com/Avunu/web-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/fleet-addons"]
+	path = projects/fleet-addons
+	url = https://github.com/Avunu/fleet-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/edi-addons"]
+	path = projects/edi-addons
+	url = https://github.com/Avunu/edi-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/ai-addons"]
+	path = projects/ai-addons
+	url = https://github.com/Avunu/ai-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/mail-addons"]
+	path = projects/mail-addons
+	url = https://github.com/Avunu/mail-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/server-tools-addons"]
+	path = projects/server-tools-addons
+	url = https://github.com/Avunu/server-tools-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/repair-addons"]
+	path = projects/repair-addons
+	url = https://github.com/Avunu/repair-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/timesheet-addons"]
+	path = projects/timesheet-addons
+	url = https://github.com/Avunu/timesheet-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/shopfloor-app-addons"]
+	path = projects/shopfloor-app-addons
+	url = https://github.com/Avunu/shopfloor-app-addons.git
+	branch = 18.0
+	shallow = true
+[submodule "projects/vertical-auto-repair-addons"]
+	path = projects/vertical-auto-repair-addons
+	url = https://github.com/Avunu/vertical-auto-repair-addons.git
+	branch = 18.0
+	shallow = true
