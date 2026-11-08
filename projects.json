@@ -125,6 +125,17 @@
       "docs": "docs"
     },
     {
+      "path": "espresso-sync",
+      "slug": "espresso_sync",
+      "name": "Espresso Sync",
+      "tagline": "Two-way sync between Frappe documents and REST APIs, mapped with JSONata and validated against OpenAPI specs and DocType metadata.",
+      "platform": "frappe",
+      "repo": "https://github.com/Avunu/espresso_sync",
+      "license": "MIT",
+      "branch": "develop",
+      "docs": "docs"
+    },
+    {
       "path": "fleet-addons",
       "slug": "fleet-addons",
       "name": "Avunu fleet addons",
