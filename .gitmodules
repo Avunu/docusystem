@@ -43,6 +43,11 @@
 	url = https://github.com/Avunu/esign_webforms.git
 	branch = develop
 	shallow = true
+[submodule "projects/espresso-sync"]
+	path = projects/espresso-sync
+	url = https://github.com/Avunu/espresso_sync.git
+	branch = develop
+	shallow = true
 [submodule "projects/frappe-nix"]
 	path = projects/frappe-nix
 	url = https://github.com/Avunu/frappe-nix.git
