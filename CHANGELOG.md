@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Avunu/site-docs/compare/v0.3.0...v0.4.0) (2026-11-08)
+
+
+### Features
+
+* add Espresso Sync ([#183](https://github.com/Avunu/site-docs/issues/183)) ([93732ee](https://github.com/Avunu/site-docs/commit/93732ee448d6ceb34c0e6d71e138bb793b2dd678))
+
 ## [0.3.0](https://github.com/Avunu/site-docs/compare/v0.2.0...v0.3.0) (2026-11-07)
 
 
